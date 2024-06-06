@@ -141,7 +141,6 @@ fn second_pass(source_text: &String, source_type: SourceType) -> Result<String, 
                 if known_remix_exports.contains(&name) {
                     remix_exports.push(RemixModuleExport {
                         key: name,
-                        name: Some(name),
                         span: get_export_span(&node),
                     });
                     second_pass_fixes.push(Fix::delete(named_export.span));
@@ -155,7 +154,6 @@ fn second_pass(source_text: &String, source_type: SourceType) -> Result<String, 
             }
             remix_exports.push(RemixModuleExport {
                 key: "Component",
-                name: get_export_name(&node),
                 span: get_export_span(&node),
             });
             second_pass_fixes.push(Fix::delete(default_export.span));
@@ -177,8 +175,6 @@ fn second_pass(source_text: &String, source_type: SourceType) -> Result<String, 
 #[derive(Debug)]
 struct RemixModuleExport<'a> {
     key: &'a str,
-    #[allow(unused)]
-    name: Option<&'a str>,
     span: Option<Span>,
 }
 
@@ -196,7 +192,7 @@ fn construct_new_module_object(
         .collect();
 
     // Keep the original order of exports
-    let _ = &exports_with_span.sort_by(|a, b| a.span.unwrap().start.cmp(&b.span.unwrap().start));
+    exports_with_span.sort_by(|a, b| a.span.unwrap().start.cmp(&b.span.unwrap().start));
 
     for export in exports_with_span.iter() {
         module_object.push_str(&format!(
