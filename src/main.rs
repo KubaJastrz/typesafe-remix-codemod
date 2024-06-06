@@ -182,7 +182,7 @@ fn construct_new_module_object(
     remix_exports: &Vec<RemixModuleExport>,
     source_text: &String,
 ) -> String {
-    let mut module_object = String::from("\nexport default defineRoute({\n");
+    let mut module_object = String::from("export default defineRoute({\n");
 
     // module_object.push_str("  params: [],\n");
 
@@ -196,15 +196,17 @@ fn construct_new_module_object(
 
     for export in exports_with_span.iter() {
         module_object.push_str(&format!(
-            "  {}: {},\n",
+            "{}: {},\n",
             export.key,
             export.span.unwrap().source_text(source_text)
         ));
     }
 
+    module_object = indent::indent_all_by(2, module_object);
+
     module_object.push_str("});\n");
 
-    module_object
+    format!("\n{}", module_object.trim_start().to_owned())
 }
 
 fn is_new_module_default_export(node: &AstNode) -> bool {
