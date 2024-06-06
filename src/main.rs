@@ -251,8 +251,8 @@ fn get_named_export_name<'a>(node: &'a AstNode<'a>) -> Option<&'a str> {
                 decl.id.as_ref().map(|id| id.name.as_str())
             } else if let Some(Declaration::VariableDeclaration(decl)) = &named_export.declaration {
                 decl.declarations.iter().find_map(|d| {
-                    if let BindingPatternKind::BindingIdentifier(bind) = &d.id.kind {
-                        Some(bind.name.as_str())
+                    if let BindingPatternKind::BindingIdentifier(ident) = &d.id.kind {
+                        Some(ident.name.as_str())
                     } else {
                         None
                     }
@@ -293,17 +293,52 @@ fn get_export_function_meta<'a>(
                 }
                 meta.is_async = decl.r#async;
             } else if let Some(Declaration::VariableDeclaration(decl)) = &named_export.declaration {
-                meta.span = decl.declarations.iter().find_map(|d| {
+                if decl.declarations.len() != 1 {
+                    return meta;
+                }
+
+                if let Some(d) = decl.declarations.first() {
                     if let BindingPatternKind::BindingIdentifier(_) = &d.id.kind {
                         if let Some(init) = &d.init {
-                            Some(init.span())
-                        } else {
-                            None
+                            meta.span = Some(init.span());
+
+                            match init {
+                                Expression::FunctionExpression(func) => {
+                                    meta.args = Some(
+                                        // remove the parentheses
+                                        Span::new(
+                                            func.params.span.start + 1,
+                                            func.params.span.end - 1,
+                                        )
+                                        .source_text(&source_text),
+                                    );
+                                    if let Some(body) = &func.body {
+                                        meta.body = Some(body.span.source_text(&source_text))
+                                    }
+                                    meta.is_async = func.r#async;
+                                }
+                                Expression::ArrowFunctionExpression(arrow_func) => {
+                                    // Don't use shorthand for arrow functions with implicit returns, like `() => stuff`
+                                    if arrow_func.expression {
+                                        return meta;
+                                    }
+                                    meta.args = Some(
+                                        // remove the parentheses
+                                        Span::new(
+                                            arrow_func.params.span.start + 1,
+                                            arrow_func.params.span.end - 1,
+                                        )
+                                        .source_text(&source_text),
+                                    );
+                                    meta.body =
+                                        Some(&arrow_func.body.span.source_text(&source_text));
+                                    meta.is_async = arrow_func.r#async;
+                                }
+                                _ => {}
+                            }
                         }
-                    } else {
-                        None
                     }
-                });
+                }
             }
         }
         AstKind::ExportDefaultDeclaration(default_export) => {
