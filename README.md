@@ -18,3 +18,4 @@ todo:
 - [ ] read and inject `params` array (from the filepath? from the sourcecode?)
 - [ ] remove useLoaderData altogether https://x.com/pcattori/status/1798355710968844784
 - [ ] remove `LoaderFunctionArgs` from `loader({ params }: LoaderFunctionArgs)`
+- [ ] support `clientLoader.hydrate = true`

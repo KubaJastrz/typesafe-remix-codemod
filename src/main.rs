@@ -128,6 +128,7 @@ fn second_pass(source_text: &String, source_type: SourceType) -> Result<String, 
         "headers",
         "default",
         "ErrorBoundary",
+        "HydrateFallback",
         "shouldRevalidate",
     ];
 
@@ -137,7 +138,7 @@ fn second_pass(source_text: &String, source_type: SourceType) -> Result<String, 
 
     for node in semantic_ret.semantic.nodes().iter() {
         if let AstKind::ExportNamedDeclaration(named_export) = node.kind() {
-            if let Some(name) = get_export_name(&node) {
+            if let Some(name) = get_named_export_name(&node) {
                 if known_remix_exports.contains(&name) {
                     let export_meta = get_export_function_meta(&node, source_text);
                     remix_exports.push(RemixModuleExport {
@@ -243,7 +244,7 @@ fn is_new_module_default_export(node: &AstNode) -> bool {
     false
 }
 
-fn get_export_name<'a>(node: &'a AstNode<'a>) -> Option<&'a str> {
+fn get_named_export_name<'a>(node: &'a AstNode<'a>) -> Option<&'a str> {
     match node.kind() {
         AstKind::ExportNamedDeclaration(named_export) => {
             if let Some(Declaration::FunctionDeclaration(decl)) = &named_export.declaration {
@@ -256,15 +257,6 @@ fn get_export_name<'a>(node: &'a AstNode<'a>) -> Option<&'a str> {
                         None
                     }
                 })
-            } else {
-                None
-            }
-        }
-        AstKind::ExportDefaultDeclaration(default_export) => {
-            if let ExportDefaultDeclarationKind::FunctionDeclaration(decl) =
-                &default_export.declaration
-            {
-                decl.id.as_ref().map(|id| id.name.as_str())
             } else {
                 None
             }
