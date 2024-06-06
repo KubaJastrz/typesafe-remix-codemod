@@ -1,8 +1,12 @@
-import type { MetaFunction } from "@remix-run/node";
+import type { ActionFunction, MetaFunction } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 
 export const meta: MetaFunction = () => {
   return [{ title: "New Remix App" }];
+};
+
+export const action: ActionFunction = async ({ request }) => {
+  console.log(request.method);
 };
 
 export function loader() {
