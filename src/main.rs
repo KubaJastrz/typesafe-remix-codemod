@@ -139,9 +139,13 @@ fn second_pass(source_text: &String, source_type: SourceType) -> Result<String, 
         if let AstKind::ExportNamedDeclaration(named_export) = node.kind() {
             if let Some(name) = get_export_name(&node) {
                 if known_remix_exports.contains(&name) {
+                    let export_meta = get_export_function_meta(&node, source_text);
                     remix_exports.push(RemixModuleExport {
                         key: name,
-                        span: get_export_span(&node),
+                        span: export_meta.span,
+                        args: export_meta.args,
+                        body: export_meta.body,
+                        is_async: export_meta.is_async,
                     });
                     second_pass_fixes.push(Fix::delete(named_export.span));
                 }
@@ -152,9 +156,13 @@ fn second_pass(source_text: &String, source_type: SourceType) -> Result<String, 
                 println!("File already has a new module default export");
                 return Err(());
             }
+            let export_meta = get_export_function_meta(&node, source_text);
             remix_exports.push(RemixModuleExport {
                 key: "Component",
-                span: get_export_span(&node),
+                span: export_meta.span,
+                args: export_meta.args,
+                body: export_meta.body,
+                is_async: export_meta.is_async,
             });
             second_pass_fixes.push(Fix::delete(default_export.span));
         }
@@ -176,6 +184,9 @@ fn second_pass(source_text: &String, source_type: SourceType) -> Result<String, 
 struct RemixModuleExport<'a> {
     key: &'a str,
     span: Option<Span>,
+    args: Option<&'a str>,
+    body: Option<&'a str>,
+    is_async: bool,
 }
 
 fn construct_new_module_object(
@@ -195,11 +206,21 @@ fn construct_new_module_object(
     exports_with_span.sort_by(|a, b| a.span.unwrap().start.cmp(&b.span.unwrap().start));
 
     for export in exports_with_span.iter() {
-        module_object.push_str(&format!(
-            "{}: {},\n",
-            export.key,
-            export.span.unwrap().source_text(source_text)
-        ));
+        if let Some(body) = export.body {
+            module_object.push_str(&format!(
+                "{}{}({}) {},\n",
+                if export.is_async { "async " } else { "" },
+                export.key,
+                export.args.unwrap_or(""),
+                body
+            ));
+        } else {
+            module_object.push_str(&format!(
+                "{}: {},\n",
+                export.key,
+                export.span.unwrap().source_text(source_text)
+            ));
+        }
     }
 
     module_object = indent::indent_all_by(2, module_object);
@@ -252,13 +273,35 @@ fn get_export_name<'a>(node: &'a AstNode<'a>) -> Option<&'a str> {
     }
 }
 
-fn get_export_span(node: &AstNode) -> Option<Span> {
+#[derive(Debug, Default)]
+struct ExportFunctionMeta<'a> {
+    span: Option<Span>,
+    args: Option<&'a str>,
+    body: Option<&'a str>,
+    is_async: bool,
+}
+
+fn get_export_function_meta<'a>(
+    node: &'a AstNode<'a>,
+    source_text: &'a str,
+) -> ExportFunctionMeta<'a> {
+    let mut meta = ExportFunctionMeta::default();
+
     match node.kind() {
         AstKind::ExportNamedDeclaration(named_export) => {
             if let Some(Declaration::FunctionDeclaration(decl)) = &named_export.declaration {
-                Some(decl.span)
+                meta.span = Some(decl.span);
+                meta.args = Some(
+                    // remove the parentheses
+                    Span::new(decl.params.span.start + 1, decl.params.span.end - 1)
+                        .source_text(&source_text),
+                );
+                if let Some(body) = &decl.body {
+                    meta.body = Some(body.span.source_text(&source_text));
+                }
+                meta.is_async = decl.r#async;
             } else if let Some(Declaration::VariableDeclaration(decl)) = &named_export.declaration {
-                decl.declarations.iter().find_map(|d| {
+                meta.span = decl.declarations.iter().find_map(|d| {
                     if let BindingPatternKind::BindingIdentifier(_) = &d.id.kind {
                         if let Some(init) = &d.init {
                             Some(init.span())
@@ -268,22 +311,29 @@ fn get_export_span(node: &AstNode) -> Option<Span> {
                     } else {
                         None
                     }
-                })
-            } else {
-                None
+                });
             }
         }
         AstKind::ExportDefaultDeclaration(default_export) => {
             if let ExportDefaultDeclarationKind::FunctionDeclaration(decl) =
                 &default_export.declaration
             {
-                Some(decl.span)
-            } else {
-                None
+                meta.span = Some(decl.span);
+                meta.args = Some(
+                    // remove the parentheses
+                    Span::new(decl.params.span.start + 1, decl.params.span.end - 1)
+                        .source_text(&source_text),
+                );
+                if let Some(body) = &decl.body {
+                    meta.body = Some(body.span.source_text(&source_text))
+                }
+                meta.is_async = decl.r#async;
             }
         }
-        _ => None,
+        _ => {}
     }
+
+    meta
 }
 
 fn find_hook_type_param(call_expr: &CallExpression, hook_name: &str) -> Option<Span> {
