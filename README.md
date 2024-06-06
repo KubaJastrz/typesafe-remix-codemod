@@ -7,3 +7,8 @@ git clone https://github.com/KubaJastrz/typesafe-remix-codemod
 cd typesafe-remix-codemod
 cargo run ./remix-app  # or path to any other remix app
 ```
+
+todo:
+- [ ] indent the result
+- [ ] remove those ugly empty lines
+- [ ] add import for `defineRoutes` at the top of the file
