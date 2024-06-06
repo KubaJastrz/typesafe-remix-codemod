@@ -11,8 +11,9 @@ cargo run ./remix-app  # or path to any other remix app
 ```
 
 todo:
-- [ ] indent the result
+- [x] indent the result
 - [ ] remove those ugly empty lines
 - [ ] add import for `defineRoutes` at the top of the file
 - [ ] read the `app` dir from config somehow, right now it is hardcoded
 - [ ] read and inject `params` array (from the filepath? from the sourcecode?)
+- [ ] remove useLoaderData altogether https://x.com/pcattori/status/1798355710968844784
