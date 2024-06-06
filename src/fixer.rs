@@ -44,40 +44,34 @@ pub struct Fixer<'a> {
 
 impl<'a> Fixer<'a> {
     pub fn new(source_text: &'a str, fixes: Vec<Fix<'a>>) -> Self {
-        Self {
-            source_text,
-            fixes,
-        }
+        Self { source_text, fixes }
     }
 
     /// # Panics
     pub fn fix(mut self) -> FixResult<'a> {
         let source_text = self.source_text;
 
-        self.fixes
-            .sort_by_key(|m| m.span);
+        self.fixes.sort_by_key(|m| m.span);
         let mut fixed = false;
         let mut output = String::with_capacity(source_text.len());
         let mut last_pos: i64 = -1;
-        self.fixes
-            .iter_mut()
-            .for_each(|fix| {
-                let start = fix.span.start;
-                let end = fix.span.end;
-                if start > end {
-                    return;
-                }
-                if i64::from(start) <= last_pos {
-                    return;
-                }
+        self.fixes.iter_mut().for_each(|fix| {
+            let start = fix.span.start;
+            let end = fix.span.end;
+            if start > end {
+                return;
+            }
+            if i64::from(start) <= last_pos {
+                return;
+            }
 
-                fix.fixed = true;
-                fixed = true;
-                let offset = usize::try_from(last_pos.max(0)).ok().unwrap();
-                output.push_str(&source_text[offset..start as usize]);
-                output.push_str(&fix.content);
-                last_pos = i64::from(end);
-            });
+            fix.fixed = true;
+            fixed = true;
+            let offset = usize::try_from(last_pos.max(0)).ok().unwrap();
+            output.push_str(&source_text[offset..start as usize]);
+            output.push_str(&fix.content);
+            last_pos = i64::from(end);
+        });
 
         let offset = usize::try_from(last_pos.max(0)).ok().unwrap();
         output.push_str(&source_text[offset..]);
