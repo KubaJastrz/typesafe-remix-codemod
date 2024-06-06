@@ -14,3 +14,4 @@ todo:
 - [ ] indent the result
 - [ ] remove those ugly empty lines
 - [ ] add import for `defineRoutes` at the top of the file
+- [ ] read the `app` dir from config somehow, right now it is hardcoded
