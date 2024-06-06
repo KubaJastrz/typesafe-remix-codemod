@@ -1,0 +1,15 @@
+[package]
+name = "codemod"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+oxc_allocator = "0.13.3"
+oxc_ast = "0.13.3"
+oxc_parser = "0.13.3"
+oxc_semantic = "0.13.3"
+oxc_span = "0.13.3"
+serde = "1.0.203"
+serde_json = "1.0.117"
