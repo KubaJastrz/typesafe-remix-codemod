@@ -98,8 +98,6 @@ fn first_pass(source_text: &String, source_type: SourceType) -> Result<String, (
 
     let first_pass_code = Fixer::new(&source_text, first_pass_fixes).fix().fixed_code;
 
-    println!("{}", first_pass_code);
-
     Ok(first_pass_code.to_string())
 }
 
