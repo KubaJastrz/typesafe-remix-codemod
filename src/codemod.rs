@@ -13,8 +13,8 @@ use std::{process, vec};
 
 use crate::fixer::{Fix, Fixer};
 
-pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, ()> {
-    let first_pass_code = first_pass(&source_text, source_type);
+pub fn codemod<'a>(source_text: &'a str, source_type: SourceType) -> Result<String, ()> {
+    let first_pass_code = first_pass(&source_text.to_owned(), source_type);
 
     if first_pass_code.is_err() {
         return Err(());
@@ -125,6 +125,10 @@ fn second_pass(source_text: &String, source_type: SourceType) -> Result<String, 
             });
             second_pass_fixes.push(Fix::delete(default_export.span));
         }
+    }
+
+    if remix_exports.len() == 0 {
+        return Ok("".to_owned());
     }
 
     let new_export_position = source_text.len() as u32;
@@ -332,4 +336,20 @@ fn find_hook_type_param(call_expr: &CallExpression, hook_name: &str) -> Option<S
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use oxc_span::SourceType;
+
+    use super::codemod;
+
+    fn source_type_tsx() -> SourceType {
+        SourceType::from_path("path/to/file.tsx").unwrap()
+    }
+
+    #[test]
+    fn it_works() {
+        assert_eq!(codemod(r#""#, source_type_tsx()).unwrap(), r#""#);
+    }
 }
