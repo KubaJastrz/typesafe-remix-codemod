@@ -5,6 +5,7 @@ mod utils;
 use oxc_span::SourceType;
 
 use serde_json::Value;
+use spinners::{Spinner, Spinners};
 use std::{fs, process};
 
 fn main() {
@@ -12,7 +13,10 @@ fn main() {
 
     println!("Working directory: {}", resolved_dir);
 
+    let mut spinner = Spinner::new(Spinners::Dots, "Gathering route files...".into());
     let routes_raw = utils::get_remix_routes_json(&resolved_dir);
+    spinner.stop_with_symbol("\x1b[32m✓\x1b[0m");
+
     let routes_json: Value = serde_json::from_str(&routes_raw).expect("Failed to parse JSON");
 
     if let Some(array) = routes_json.as_array() {
