@@ -346,7 +346,10 @@ mod tests {
 
     fn assert_snapshot(name: &str, input: &str) {
         let source_type = SourceType::from_path("path/to/file.tsx").unwrap();
-        insta::with_settings!({ prepend_module_to_snapshot => false }, {
+        insta::with_settings!({
+            prepend_module_to_snapshot => false,
+            description => input,
+        }, {
             insta::assert_snapshot!(name, codemod(input, source_type).unwrap());
         })
     }

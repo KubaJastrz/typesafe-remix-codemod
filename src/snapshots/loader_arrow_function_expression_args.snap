@@ -1,5 +1,6 @@
 ---
 source: src/codemod.rs
+description: "\nimport type { LoaderFunctionArgs } from \"@remix-run/node\";\n\nexport const loader = ({ params, context, request, response }: LoaderFunctionArgs) => ({ hello: \"world\" });\n        "
 expression: "codemod(input, source_type).unwrap()"
 ---
 import type { LoaderFunctionArgs } from "@remix-run/node";

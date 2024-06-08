@@ -1,5 +1,6 @@
 ---
 source: src/codemod.rs
+description: "\nexport default () => <div>hello</div>;\n        "
 expression: "codemod(input, source_type).unwrap()"
 ---
         

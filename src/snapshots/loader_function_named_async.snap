@@ -1,5 +1,6 @@
 ---
 source: src/codemod.rs
+description: "\nexport async function loader() {\n  return { hello: \"world\" };\n}\n        "
 expression: "codemod(input, source_type).unwrap()"
 ---
         
