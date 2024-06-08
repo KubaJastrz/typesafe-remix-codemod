@@ -5,4 +5,7 @@ expression: "codemod(input, source_type).unwrap()"
 ---
         
 export default defineRoute({
+  Component() {
+    return <div>hello</div>;
+  },
 });

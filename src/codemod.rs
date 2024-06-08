@@ -109,8 +109,7 @@ fn second_pass(source_text: &String, source_type: SourceType) -> Result<String, 
                     second_pass_fixes.push(Fix::delete(named_export.span));
                 }
             }
-        }
-        if let AstKind::ExportDefaultDeclaration(default_export) = node.kind() {
+        } else if let AstKind::ExportDefaultDeclaration(default_export) = node.kind() {
             if is_new_module_default_export(&node) {
                 println!("File already has a new module default export");
                 return Err(());
@@ -304,19 +303,38 @@ fn get_export_function_meta<'a>(
             }
         }
         AstKind::ExportDefaultDeclaration(default_export) => {
-            if let ExportDefaultDeclarationKind::FunctionDeclaration(decl) =
-                &default_export.declaration
-            {
-                meta.span = Some(decl.span);
-                meta.args = Some(
-                    // remove the parentheses
-                    Span::new(decl.params.span.start + 1, decl.params.span.end - 1)
-                        .source_text(&source_text),
-                );
-                if let Some(body) = &decl.body {
-                    meta.body = Some(body.span.source_text(&source_text))
+            match &default_export.declaration {
+                ExportDefaultDeclarationKind::FunctionDeclaration(decl) => {
+                    meta.span = Some(decl.span);
+                    meta.args = Some(
+                        // remove the parentheses
+                        Span::new(decl.params.span.start + 1, decl.params.span.end - 1)
+                            .source_text(&source_text),
+                    );
+                    if let Some(body) = &decl.body {
+                        meta.body = Some(body.span.source_text(&source_text))
+                    }
+                    meta.is_async = decl.r#async;
                 }
-                meta.is_async = decl.r#async;
+                ExportDefaultDeclarationKind::ArrowFunctionExpression(arrow_func) => {
+                    // Don't use shorthand for arrow functions with implicit returns, like `() => stuff`
+                    if arrow_func.expression {
+                        meta.span = Some(arrow_func.span);
+                        return meta;
+                    }
+                    meta.span = Some(arrow_func.span);
+                    meta.args = Some(
+                        // remove the parentheses
+                        Span::new(
+                            arrow_func.params.span.start + 1,
+                            arrow_func.params.span.end - 1,
+                        )
+                        .source_text(&source_text),
+                    );
+                    meta.body = Some(&arrow_func.body.span.source_text(&source_text));
+                    meta.is_async = arrow_func.r#async;
+                }
+                _ => {}
             }
         }
         _ => {}
