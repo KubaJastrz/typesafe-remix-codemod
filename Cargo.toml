@@ -15,3 +15,10 @@ oxc_span = "0.13.3"
 serde = "1.0.203"
 serde_json = "1.0.117"
 spinners = "4.1.1"
+
+[dev-dependencies]
+insta = "1.39.0"
+
+[profile.dev.package]
+insta.opt-level = 3
+similar.opt-level = 3

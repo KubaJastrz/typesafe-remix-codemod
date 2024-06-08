@@ -1,0 +1,10 @@
+---
+source: src/codemod.rs
+expression: "codemod(input, source_type).unwrap()"
+---
+        
+export default defineRoute({
+  async loader() {
+    return { hello: "world" };
+  },
+});

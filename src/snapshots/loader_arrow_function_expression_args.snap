@@ -1,0 +1,11 @@
+---
+source: src/codemod.rs
+expression: "codemod(input, source_type).unwrap()"
+---
+import type { LoaderFunctionArgs } from "@remix-run/node";
+
+
+        
+export default defineRoute({
+  loader: ({ params, context, request, response }: LoaderFunctionArgs) => ({ hello: "world" }),
+});

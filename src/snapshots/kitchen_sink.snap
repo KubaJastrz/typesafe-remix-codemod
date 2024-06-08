@@ -1,0 +1,33 @@
+---
+source: src/codemod.rs
+expression: "codemod(input, source_type).unwrap()"
+---
+import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { useLoaderData } from "@remix-run/react";
+
+
+
+const title = "User page";
+
+
+
+
+
+
+        
+export default defineRoute({
+  meta: () => [{ title }],
+  action({ params, response }: ActionFunctionArgs) {
+    response.status = 307;
+    response.headers.set("Location", "/login");
+    return response;
+  },
+  async loader({ params }: LoaderFunctionArgs) {
+    const { userId } = params;
+    return { userId };
+  },
+  Component() {
+    const data = useLoaderData();
+    return <h1>User: {data.userId}</h1>;
+  },
+});
