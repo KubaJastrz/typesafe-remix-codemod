@@ -30,7 +30,23 @@ The codemod finds all route files with `npx -y @remix-run/dev routes --json` and
 
 It makes transformations in two passes per file. The first one is to modify the existing function bodies and remove the `useLoaderData`/`useActionData` hook calls. The second pass is to replace all Remix exports with the new `defineRoute` default export.
 
-## Todo
+## Contributing
+
+```bash
+# run against local remix app
+cargo run ./remix-app
+
+# revert codemod changes
+git restore ./remix-app
+
+# test
+cargo test
+
+# review snapshots
+cargo insta review
+```
+
+### Todo
 
 - [x] indent the result
 - [ ] remove those ugly empty lines
