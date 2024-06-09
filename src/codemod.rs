@@ -527,6 +527,62 @@ mod tests {
         assert_snapshot("loader_arrow_function_expression_async", input);
     }
 
+    #[test]
+    fn test_component_loader() {
+        let input = r#"
+            import { useLoaderData } from "@remix-run/react";
+
+            export function loader() {
+              return { hello: "world" };
+            }
+
+            export default function() {
+              const data = useLoaderData<typeof loader>();
+              return <h1>{data.hello}</h1>;
+            }
+        "#;
+        assert_snapshot("component_loader", input);
+    }
+
+    #[test]
+    fn test_component_action() {
+        let input = r#"
+            import { useActionData } from "@remix-run/react";
+
+            export function action() {
+              return { hello: "world" };
+            }
+
+            export default function() {
+              const data = useActionData<typeof loader>();
+              return <h1>{data.hello}</h1>;
+            }
+        "#;
+        assert_snapshot("component_action", input);
+    }
+
+    #[test]
+    fn test_component_loader_action() {
+        let input = r#"
+            import { useActionData, useLoaderData } from "@remix-run/react";
+
+            export function loader() {
+              return { loader: "hello" };
+            }
+
+            export function action() {
+              return { action: "world" };
+            }
+
+            export default function() {
+              const loaderData = useActionData<typeof loader>();
+              const actionData = useActionData<typeof action>();
+              return <h1>{loaderData.loader} {actionData.action}</h1>;
+            }
+        "#;
+        assert_snapshot("component_loader_action", input);
+    }
+
     fn assert_snapshot(name: &str, input: &str) {
         let input = outdent(input);
         let source_type = SourceType::from_path("path/to/file.tsx").unwrap();
