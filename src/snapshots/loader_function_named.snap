@@ -1,9 +1,8 @@
 ---
 source: src/codemod.rs
-description: "\nexport function loader() {\n  return { hello: \"world\" };\n}\n        "
+description: "export function loader() {\n  return { hello: \"world\" };\n}\n"
 expression: "codemod(input, source_type).unwrap()"
 ---
-        
 export default defineRoute({
   loader() {
     return { hello: "world" };

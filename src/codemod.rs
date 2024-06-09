@@ -360,17 +360,9 @@ fn find_hook_type_param(call_expr: &CallExpression, hook_name: &str) -> Option<S
 mod tests {
     use oxc_span::SourceType;
 
-    use super::codemod;
+    use std::cmp;
 
-    fn assert_snapshot(name: &str, input: &str) {
-        let source_type = SourceType::from_path("path/to/file.tsx").unwrap();
-        insta::with_settings!({
-            prepend_module_to_snapshot => false,
-            description => input,
-        }, {
-            insta::assert_snapshot!(name, codemod(input, source_type).unwrap());
-        })
-    }
+    use super::codemod;
 
     #[test]
     fn test_empty() {
@@ -381,28 +373,28 @@ mod tests {
     #[test]
     fn test_kitchen_sink() {
         let input = r#"
-import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+            import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+            import { useLoaderData } from "@remix-run/react";
 
-export const meta = () => [{ title }];
+            export const meta = () => [{ title }];
 
-const title = "User page";
+            const title = "User page";
 
-export function action({ params, response }: ActionFunctionArgs) {
-  response.status = 307;
-  response.headers.set("Location", "/login");
-  return response;
-}
+            export function action({ params, response }: ActionFunctionArgs) {
+              response.status = 307;
+              response.headers.set("Location", "/login");
+              return response;
+            }
 
-export const loader = async ({ params }: LoaderFunctionArgs) => {
-  const { userId } = params;
-  return { userId };
-};
+            export const loader = async ({ params }: LoaderFunctionArgs) => {
+              const { userId } = params;
+              return { userId };
+            };
 
-export default function Splat() {
-  const data = useLoaderData<typeof loader>();
-  return <h1>User: {data.userId}</h1>;
-}
+            export default function Splat() {
+              const data = useLoaderData<typeof loader>();
+              return <h1>User: {data.userId}</h1>;
+            }
         "#;
         assert_snapshot("kitchen_sink", input);
     }
@@ -410,9 +402,9 @@ export default function Splat() {
     #[test]
     fn test_component_function_anonymous() {
         let input = r#"
-export default function() {
-  return <div>hello</div>;
-}
+            export default function() {
+              return <div>hello</div>;
+            }
         "#;
         assert_snapshot("component_function_anonymous", input);
     }
@@ -420,9 +412,9 @@ export default function() {
     #[test]
     fn test_component_function_named() {
         let input = r#"
-export default function Route() {
-  return <div>hello</div>;
-}
+            export default function Route() {
+              return <div>hello</div>;
+            }
         "#;
         assert_snapshot("component_function_named", input);
     }
@@ -430,9 +422,9 @@ export default function Route() {
     #[test]
     fn test_component_arrow_function() {
         let input = r#"
-export default () => {
-  return <div>hello</div>;
-}
+            export default () => {
+              return <div>hello</div>;
+            }
         "#;
         assert_snapshot("component_arrow_function", input);
     }
@@ -440,7 +432,7 @@ export default () => {
     #[test]
     fn test_component_arrow_function_expression() {
         let input = r#"
-export default () => <div>hello</div>;
+            export default () => <div>hello</div>;
         "#;
         assert_snapshot("component_arrow_function_expression", input);
     }
@@ -448,9 +440,9 @@ export default () => <div>hello</div>;
     #[test]
     fn test_loader_function_named() {
         let input = r#"
-export function loader() {
-  return { hello: "world" };
-}
+            export function loader() {
+              return { hello: "world" };
+            }
         "#;
         assert_snapshot("loader_function_named", input);
     }
@@ -458,11 +450,11 @@ export function loader() {
     #[test]
     fn test_loader_function_named_args() {
         let input = r#"
-import type { LoaderFunctionArgs } from "@remix-run/node";
+            import type { LoaderFunctionArgs } from "@remix-run/node";
 
-export function loader({ params, context, request, response }: LoaderFunctionArgs) {
-  return { hello: "world" };
-}
+            export function loader({ params, context, request, response }: LoaderFunctionArgs) {
+              return { hello: "world" };
+            }
         "#;
         assert_snapshot("loader_function_named_args", input);
     }
@@ -470,9 +462,9 @@ export function loader({ params, context, request, response }: LoaderFunctionArg
     #[test]
     fn test_loader_arrow_function() {
         let input = r#"
-export const loader = () => {
-  return { hello: "world" };
-}
+            export const loader = () => {
+              return { hello: "world" };
+            }
         "#;
         assert_snapshot("loader_arrow_function", input);
     }
@@ -480,11 +472,11 @@ export const loader = () => {
     #[test]
     fn test_loader_arrow_function_args() {
         let input = r#"
-import type { LoaderFunctionArgs } from "@remix-run/node";
+            import type { LoaderFunctionArgs } from "@remix-run/node";
 
-export const loader = ({ params, context, request, response }: LoaderFunctionArgs) => {
-  return { hello: "world" };
-}
+            export const loader = ({ params, context, request, response }: LoaderFunctionArgs) => {
+              return { hello: "world" };
+            }
         "#;
         assert_snapshot("loader_arrow_function_args", input);
     }
@@ -492,7 +484,7 @@ export const loader = ({ params, context, request, response }: LoaderFunctionArg
     #[test]
     fn test_loader_arrow_function_expression() {
         let input = r#"
-export const loader = () => ({ hello: "world" });
+            export const loader = () => ({ hello: "world" });
         "#;
         assert_snapshot("loader_arrow_function_expression", input);
     }
@@ -500,9 +492,9 @@ export const loader = () => ({ hello: "world" });
     #[test]
     fn test_loader_arrow_function_expression_args() {
         let input = r#"
-import type { LoaderFunctionArgs } from "@remix-run/node";
+            import type { LoaderFunctionArgs } from "@remix-run/node";
 
-export const loader = ({ params, context, request, response }: LoaderFunctionArgs) => ({ hello: "world" });
+            export const loader = ({ params, context, request, response }: LoaderFunctionArgs) => ({ hello: "world" });
         "#;
         assert_snapshot("loader_arrow_function_expression_args", input);
     }
@@ -510,9 +502,9 @@ export const loader = ({ params, context, request, response }: LoaderFunctionArg
     #[test]
     fn test_loader_function_named_async() {
         let input = r#"
-export async function loader() {
-  return { hello: "world" };
-}
+            export async function loader() {
+              return { hello: "world" };
+            }
         "#;
         assert_snapshot("loader_function_named_async", input);
     }
@@ -520,9 +512,9 @@ export async function loader() {
     #[test]
     fn test_loader_arrow_function_async() {
         let input = r#"
-export const loader = async () => {
-  return { hello: "world" };
-}
+            export const loader = async () => {
+              return { hello: "world" };
+            }
         "#;
         assert_snapshot("loader_arrow_function_async", input);
     }
@@ -530,8 +522,49 @@ export const loader = async () => {
     #[test]
     fn test_loader_arrow_function_expression_async() {
         let input = r#"
-export const loader = async () => ({ hello: "world" });
+            export const loader = async () => ({ hello: "world" });
         "#;
         assert_snapshot("loader_arrow_function_expression_async", input);
+    }
+
+    fn assert_snapshot(name: &str, input: &str) {
+        let input = outdent(input);
+        let source_type = SourceType::from_path("path/to/file.tsx").unwrap();
+        insta::with_settings!({
+            prepend_module_to_snapshot => false,
+            description => &input,
+        }, {
+            insta::assert_snapshot!(name, codemod(&input, source_type).unwrap());
+        })
+    }
+
+    /// Remove leading whitespace from each line, preserving relative indentation.
+    /// Remove the first and the last lines.
+    fn outdent(input: &str) -> String {
+        let length = input.len();
+        let mut output = String::with_capacity(length);
+
+        let mut base_indent = 0;
+
+        let input_body = skip_last(input.lines().skip(1));
+
+        for (i, line) in input_body.enumerate() {
+            if i == 0 {
+                base_indent = line.chars().take_while(|c| c.is_whitespace()).count();
+            }
+
+            let indent = line.chars().take_while(|c| c.is_whitespace()).count();
+            let indent = cmp::min(base_indent, indent);
+
+            output.push_str(&line[indent..]);
+            output.push('\n');
+        }
+
+        output
+    }
+
+    fn skip_last<T>(mut iter: impl Iterator<Item = T>) -> impl Iterator<Item = T> {
+        let last = iter.next();
+        iter.scan(last, |state, item| std::mem::replace(state, Some(item)))
     }
 }

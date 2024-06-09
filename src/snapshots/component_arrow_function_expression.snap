@@ -1,9 +1,8 @@
 ---
 source: src/codemod.rs
-description: "\nexport default () => <div>hello</div>;\n        "
+description: "export default () => <div>hello</div>;\n"
 expression: "codemod(input, source_type).unwrap()"
 ---
-        
 export default defineRoute({
   Component: () => <div>hello</div>,
 });
