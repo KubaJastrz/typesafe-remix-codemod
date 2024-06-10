@@ -2,7 +2,7 @@ use oxc_allocator::Allocator;
 use oxc_ast::{
     ast::{
         BindingPatternKind, Declaration, ExportDefaultDeclarationKind, Expression,
-        VariableDeclaration,
+        FormalParameters, VariableDeclaration,
     },
     AstKind,
 };
@@ -395,6 +395,23 @@ fn construct_component_params(hook_declarators: &HookDeclarators) -> Option<Stri
             Some(format!("{{ {data} }}"))
         }
     })
+}
+
+fn remove_type_annotation_from_params(params: &FormalParameters, source_text: &String) -> String {
+    let mut param_items = vec![];
+
+    for param in params.items.iter() {
+        let start = param.span.start;
+        let mut end = param.span.end;
+
+        if let Some(type_annotation) = &param.pattern.type_annotation {
+            end = type_annotation.span.start;
+        }
+
+        param_items.push(Span::new(start, end).source_text(source_text));
+    }
+
+    param_items.join(", ")
 }
 
 #[cfg(test)]
