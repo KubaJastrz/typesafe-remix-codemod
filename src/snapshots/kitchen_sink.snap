@@ -1,7 +1,7 @@
 ---
 source: src/codemod.rs
 description: "import { ActionFunctionArgs, LoaderFunctionArgs } from \"@remix-run/node\";\nimport { useLoaderData } from \"@remix-run/react\";\n\nexport const meta = () => [{ title }];\n\nconst title = \"User page\";\n\nexport function action({ params, response }: ActionFunctionArgs) {\n  response.status = 307;\n  response.headers.set(\"Location\", \"/login\");\n  return response;\n}\n\nexport const loader = async ({ params }: LoaderFunctionArgs) => {\n  const { userId } = params;\n  return { userId };\n};\n\nexport default function Splat() {\n  const data = useLoaderData<typeof loader>();\n  return <h1>User: {data.userId}</h1>;\n}\n"
-expression: "codemod(input, source_type).unwrap()"
+expression: "codemod(&input, source_type).unwrap()"
 ---
 import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
@@ -27,8 +27,8 @@ export default defineRoute({
     const { userId } = params;
     return { userId };
   },
-  Component() {
-    const data = useLoaderData();
+  Component({ data }) {
+    
     return <h1>User: {data.userId}</h1>;
   },
 });

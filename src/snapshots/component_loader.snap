@@ -13,8 +13,8 @@ export default defineRoute({
   loader() {
     return { hello: "world" };
   },
-  Component() {
-    const data = useLoaderData();
+  Component({ data }) {
+    
     return <h1>{data.hello}</h1>;
   },
 });

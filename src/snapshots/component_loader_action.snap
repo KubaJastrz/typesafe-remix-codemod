@@ -1,6 +1,6 @@
 ---
 source: src/codemod.rs
-description: "import { useActionData, useLoaderData } from \"@remix-run/react\";\n\nexport function loader() {\n  return { loader: \"hello\" };\n}\n\nexport function action() {\n  return { action: \"world\" };\n}\n\nexport default function() {\n  const loaderData = useActionData<typeof loader>();\n  const actionData = useActionData<typeof action>();\n  return <h1>{loaderData.loader} {actionData.action}</h1>;\n}\n"
+description: "import { useActionData, useLoaderData } from \"@remix-run/react\";\n\nexport function loader() {\n  return { loader: \"hello\" };\n}\n\nexport function action() {\n  return { action: \"world\" };\n}\n\nexport default function() {\n  const loaderData = useLoaderData<typeof loader>();\n  const actionData = useActionData<typeof action>();\n  return <h1>{loaderData.loader} {actionData.action}</h1>;\n}\n"
 expression: "codemod(&input, source_type).unwrap()"
 ---
 import { useActionData, useLoaderData } from "@remix-run/react";
@@ -18,9 +18,9 @@ export default defineRoute({
   action() {
     return { action: "world" };
   },
-  Component() {
-    const loaderData = useActionData();
-    const actionData = useActionData();
+  Component({ loaderData }) {
+    
+    const actionData = useActionData<typeof action>();
     return <h1>{loaderData.loader} {actionData.action}</h1>;
   },
 });

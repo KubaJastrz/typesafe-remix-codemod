@@ -1,7 +1,8 @@
 use oxc_allocator::Allocator;
 use oxc_ast::{
     ast::{
-        BindingPatternKind, CallExpression, Declaration, ExportDefaultDeclarationKind, Expression,
+        BindingPatternKind, Declaration, ExportDefaultDeclarationKind, Expression,
+        VariableDeclaration,
     },
     AstKind,
 };
@@ -9,23 +10,29 @@ use oxc_parser::Parser;
 use oxc_semantic::{AstNode, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType, Span};
 
-use std::{process, vec};
+use std::{collections::HashMap, process, vec};
 
 use crate::fixer::{Fix, Fixer};
 
-pub fn codemod<'a>(source_text: &'a str, source_type: SourceType) -> Result<String, ()> {
-    let first_pass_code = first_pass(&source_text.to_owned(), source_type);
+pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, ()> {
+    let first_pass = first_pass(&source_text, source_type);
 
-    if first_pass_code.is_err() {
+    if first_pass.is_err() {
         return Err(());
     }
 
-    let second_pass_code = second_pass(&first_pass_code.unwrap(), source_type);
+    let (first_pass_code, hook_declarators) = first_pass.unwrap();
+    let second_pass = second_pass(&first_pass_code, source_type, &hook_declarators);
 
-    second_pass_code
+    second_pass
 }
 
-fn first_pass(source_text: &String, source_type: SourceType) -> Result<String, ()> {
+type HookDeclarators<'a> = HashMap<&'static str, &'a str>;
+
+fn first_pass(
+    source_text: &String,
+    source_type: SourceType,
+) -> Result<(String, HookDeclarators), ()> {
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, &source_text, source_type).parse();
 
@@ -42,24 +49,37 @@ fn first_pass(source_text: &String, source_type: SourceType) -> Result<String, (
         .build(&ret.program);
 
     let mut first_pass_fixes: Vec<Fix> = vec![];
+    let mut hook_declarators: HookDeclarators = HashMap::new();
 
     for node in semantic_ret.semantic.nodes().iter() {
-        if let AstKind::CallExpression(call_expr) = node.kind() {
-            if let Some(loader_span) = find_hook_type_param(call_expr, "useLoaderData") {
-                first_pass_fixes.push(Fix::delete(loader_span));
+        if let AstKind::VariableDeclaration(var_decl) = node.kind() {
+            if let Some((whole_declaration, declarator_id)) =
+                find_hook_usage(var_decl, "useLoaderData")
+            {
+                first_pass_fixes.push(Fix::delete(whole_declaration));
+                hook_declarators.insert("data", declarator_id.source_text(source_text));
             }
-            if let Some(action_span) = find_hook_type_param(call_expr, "useActionData") {
-                first_pass_fixes.push(Fix::delete(action_span));
-            }
+            // TODO: figure out how to handle useActionData
+            // if let Some((whole_declaration, declarator_id)) =
+            //     find_hook_usage(var_decl, "useActionData")
+            // {
+            //     first_pass_fixes.push(Fix::delete(whole_declaration));
+            //     hook_declarators.insert("actionData", declarator_id.source_text(source_text));
+            // }
         }
     }
 
     let first_pass_code = Fixer::new(&source_text, first_pass_fixes).fix().fixed_code;
 
-    Ok(first_pass_code.to_string())
+    println!("{:?}", hook_declarators);
+    Ok((first_pass_code.to_string(), hook_declarators))
 }
 
-fn second_pass(source_text: &String, source_type: SourceType) -> Result<String, ()> {
+fn second_pass(
+    source_text: &String,
+    source_type: SourceType,
+    hook_declarators: &HookDeclarators,
+) -> Result<String, ()> {
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, &source_text, source_type).parse();
 
@@ -118,7 +138,7 @@ fn second_pass(source_text: &String, source_type: SourceType) -> Result<String, 
             remix_exports.push(RemixModuleExport {
                 key: "Component",
                 span: export_meta.span,
-                args: export_meta.args,
+                args: construct_component_params(&hook_declarators),
                 body: export_meta.body,
                 is_async: export_meta.is_async,
             });
@@ -146,7 +166,7 @@ fn second_pass(source_text: &String, source_type: SourceType) -> Result<String, 
 struct RemixModuleExport<'a> {
     key: &'a str,
     span: Option<Span>,
-    args: Option<&'a str>,
+    args: Option<String>,
     body: Option<&'a str>,
     is_async: bool,
 }
@@ -173,7 +193,7 @@ fn construct_new_module_object(
                 "{}{}({}) {},\n",
                 if export.is_async { "async " } else { "" },
                 export.key,
-                export.args.unwrap_or(""),
+                export.args.as_ref().unwrap_or(&String::from("")),
                 body
             ));
         } else {
@@ -229,7 +249,7 @@ fn get_named_export_name<'a>(node: &'a AstNode<'a>) -> Option<&'a str> {
 #[derive(Debug, Default)]
 struct ExportFunctionMeta<'a> {
     span: Option<Span>,
-    args: Option<&'a str>,
+    args: Option<String>,
     body: Option<&'a str>,
     is_async: bool,
 }
@@ -247,7 +267,8 @@ fn get_export_function_meta<'a>(
                 meta.args = Some(
                     // remove the parentheses
                     Span::new(decl.params.span.start + 1, decl.params.span.end - 1)
-                        .source_text(&source_text),
+                        .source_text(&source_text)
+                        .to_owned(),
                 );
                 if let Some(body) = &decl.body {
                     meta.body = Some(body.span.source_text(&source_text));
@@ -271,7 +292,8 @@ fn get_export_function_meta<'a>(
                                             func.params.span.start + 1,
                                             func.params.span.end - 1,
                                         )
-                                        .source_text(&source_text),
+                                        .source_text(&source_text)
+                                        .to_owned(),
                                     );
                                     if let Some(body) = &func.body {
                                         meta.body = Some(body.span.source_text(&source_text))
@@ -289,7 +311,8 @@ fn get_export_function_meta<'a>(
                                             arrow_func.params.span.start + 1,
                                             arrow_func.params.span.end - 1,
                                         )
-                                        .source_text(&source_text),
+                                        .source_text(&source_text)
+                                        .to_owned(),
                                     );
                                     meta.body =
                                         Some(&arrow_func.body.span.source_text(&source_text));
@@ -309,7 +332,8 @@ fn get_export_function_meta<'a>(
                     meta.args = Some(
                         // remove the parentheses
                         Span::new(decl.params.span.start + 1, decl.params.span.end - 1)
-                            .source_text(&source_text),
+                            .source_text(&source_text)
+                            .to_owned(),
                     );
                     if let Some(body) = &decl.body {
                         meta.body = Some(body.span.source_text(&source_text))
@@ -329,7 +353,8 @@ fn get_export_function_meta<'a>(
                             arrow_func.params.span.start + 1,
                             arrow_func.params.span.end - 1,
                         )
-                        .source_text(&source_text),
+                        .source_text(&source_text)
+                        .to_owned(),
                     );
                     meta.body = Some(&arrow_func.body.span.source_text(&source_text));
                     meta.is_async = arrow_func.r#async;
@@ -343,17 +368,33 @@ fn get_export_function_meta<'a>(
     meta
 }
 
-fn find_hook_type_param(call_expr: &CallExpression, hook_name: &str) -> Option<Span> {
-    if call_expr
-        .callee_name()
-        .is_some_and(|name| name == hook_name)
-    {
-        if let Some(type_params) = &call_expr.type_parameters {
-            return Some(type_params.span);
+fn find_hook_usage(var_decl: &VariableDeclaration, hook_name: &str) -> Option<(Span, Span)> {
+    // Let's only care about single declarator, for now
+    if var_decl.declarations.len() != 1 {
+        return None;
+    }
+
+    let declarator = var_decl.declarations.first().unwrap();
+
+    if let Some(Expression::CallExpression(call_expr)) = &declarator.init {
+        if let Expression::Identifier(ident) = &call_expr.callee {
+            if ident.name == hook_name {
+                return Some((var_decl.span, declarator.id.span()));
+            }
         }
     }
 
     None
+}
+
+fn construct_component_params(hook_declarators: &HookDeclarators) -> Option<String> {
+    hook_declarators.get("data").and_then(|data| {
+        if data.starts_with("{") {
+            Some(format!("{{ data: {data} }}"))
+        } else {
+            Some(format!("{{ {data} }}"))
+        }
+    })
 }
 
 #[cfg(test)]
@@ -367,7 +408,7 @@ mod tests {
     #[test]
     fn test_empty() {
         let source_type = SourceType::from_path("path/to/file.tsx").unwrap();
-        assert_eq!(codemod("", source_type).unwrap(), "");
+        assert_eq!(codemod(&"".to_owned(), source_type).unwrap(), "");
     }
 
     #[test]
@@ -545,6 +586,57 @@ mod tests {
     }
 
     #[test]
+    fn test_component_loader_binding_identifier() {
+        let input = r#"
+            import { useLoaderData } from "@remix-run/react";
+
+            export function loader() {
+              return { hello: "world" };
+            }
+
+            export default function() {
+              const { hello } = useLoaderData<typeof loader>();
+              return <h1>{hello}</h1>;
+            }
+        "#;
+        assert_snapshot("component_loader_binding_identifier", input);
+    }
+
+    #[test]
+    fn test_component_loader_binding_rest() {
+        let input = r#"
+            import { useLoaderData } from "@remix-run/react";
+
+            export function loader() {
+              return { hello: "world", foo: "bar" };
+            }
+
+            export default function() {
+              const { hello, ...rest } = useLoaderData<typeof loader>();
+              return <h1>{hello}</h1>;
+            }
+        "#;
+        assert_snapshot("component_loader_binding_identifier_rest", input);
+    }
+
+    #[test]
+    fn test_component_loader_binding_assignment() {
+        let input = r#"
+            import { useLoaderData } from "@remix-run/react";
+
+            export function loader() {
+              return { hello: "world", foo: "bar" };
+            }
+
+            export default function() {
+              const { hello, maybe = "not" } = useLoaderData<typeof loader>();
+              return <h1>{hello}</h1>;
+            }
+        "#;
+        assert_snapshot("component_loader_binding_assignment", input);
+    }
+
+    #[test]
     fn test_component_action() {
         let input = r#"
             import { useActionData } from "@remix-run/react";
@@ -575,7 +667,7 @@ mod tests {
             }
 
             export default function() {
-              const loaderData = useActionData<typeof loader>();
+              const loaderData = useLoaderData<typeof loader>();
               const actionData = useActionData<typeof action>();
               return <h1>{loaderData.loader} {actionData.action}</h1>;
             }
