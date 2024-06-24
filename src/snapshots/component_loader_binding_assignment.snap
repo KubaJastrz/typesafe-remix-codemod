@@ -13,7 +13,7 @@ export default defineRoute({
   serverLoader() {
     return { hello: "world", foo: "bar" };
   },
-  Component({ data: { hello, maybe = "not" } }) {
+  Component({ loaderData: { hello, maybe = "not" } }) {
     
     return <h1>{hello}</h1>;
   },

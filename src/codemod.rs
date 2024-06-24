@@ -57,7 +57,7 @@ fn first_pass(
                 find_hook_usage(var_decl, "useLoaderData")
             {
                 first_pass_fixes.push(Fix::delete(whole_declaration));
-                hook_declarators.insert("data", declarator_id.source_text(source_text));
+                hook_declarators.insert("loaderData", declarator_id.source_text(source_text));
             }
             // TODO: figure out how to handle useActionData
             // if let Some((whole_declaration, declarator_id)) =
@@ -401,11 +401,11 @@ fn find_hook_usage(var_decl: &VariableDeclaration, hook_name: &str) -> Option<(S
 }
 
 fn construct_component_params(hook_declarators: &HookDeclarators) -> Option<String> {
-    hook_declarators.get("data").and_then(|data| {
+    hook_declarators.get("loaderData").and_then(|data| {
         if data.starts_with("{") {
-            Some(format!("{{ data: {data} }}"))
+            Some(format!("{{ loaderData: {data} }}"))
         } else {
-            Some(format!("{{ {data} }}"))
+            Some(format!("{{ {} }}", data))
         }
     })
 }
