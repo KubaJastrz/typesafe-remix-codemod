@@ -70,7 +70,6 @@ fn first_pass(
 
     let first_pass_code = Fixer::new(&source_text, first_pass_fixes).fix().fixed_code;
 
-    println!("{:?}", hook_declarators);
     Ok((first_pass_code.to_string(), hook_declarators))
 }
 
