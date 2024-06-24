@@ -48,12 +48,4 @@ cargo insta review
 
 ### Todo
 
-- [x] indent the result
-- [ ] remove those ugly empty lines
-- [ ] add import for `defineRoutes` at the top of the file
-- [ ] read the `app` dir from config somehow, right now it is hardcoded
-- [ ] read and inject `params` array (from the filepath? from the sourcecode?)
-- [x] remove useLoaderData altogether https://x.com/pcattori/status/1798355710968844784
-- [ ] remove useActionData altogether (where to put action data?)
-- [ ] remove `LoaderFunctionArgs` from `loader({ params }: LoaderFunctionArgs)`
-- [ ] support `clientLoader.hydrate = true`
+Progress is being tracked in [Issue #2](https://github.com/KubaJastrz/typesafe-remix-codemod/issues/2).
