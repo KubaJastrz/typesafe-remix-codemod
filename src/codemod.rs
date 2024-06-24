@@ -59,13 +59,12 @@ fn first_pass(
                 first_pass_fixes.push(Fix::delete(whole_declaration));
                 hook_declarators.insert("loaderData", declarator_id.source_text(source_text));
             }
-            // TODO: figure out how to handle useActionData
-            // if let Some((whole_declaration, declarator_id)) =
-            //     find_hook_usage(var_decl, "useActionData")
-            // {
-            //     first_pass_fixes.push(Fix::delete(whole_declaration));
-            //     hook_declarators.insert("actionData", declarator_id.source_text(source_text));
-            // }
+            if let Some((whole_declaration, declarator_id)) =
+                find_hook_usage(var_decl, "useActionData")
+            {
+                first_pass_fixes.push(Fix::delete(whole_declaration));
+                hook_declarators.insert("actionData", declarator_id.source_text(source_text));
+            }
         }
     }
 
@@ -401,13 +400,22 @@ fn find_hook_usage(var_decl: &VariableDeclaration, hook_name: &str) -> Option<(S
 }
 
 fn construct_component_params(hook_declarators: &HookDeclarators) -> Option<String> {
-    hook_declarators.get("loaderData").and_then(|data| {
-        if data.starts_with("{") {
-            Some(format!("{{ loaderData: {data} }}"))
+    let mut params = vec![];
+
+    for (key, value) in hook_declarators.iter() {
+        let param = if key == value {
+            format!("{key}")
         } else {
-            Some(format!("{{ {} }}", data))
-        }
-    })
+            format!("{key}: {value}")
+        };
+        params.push(param.to_owned());
+    }
+
+    if params.len() == 0 {
+        return None;
+    }
+
+    Some(format!("{{ {} }}", params.join(", ")))
 }
 
 #[cfg(test)]

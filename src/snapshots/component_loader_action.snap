@@ -18,9 +18,9 @@ export default defineRoute({
   serverAction() {
     return { action: "world" };
   },
-  Component({ loaderData }) {
+  Component({ loaderData, actionData }) {
     
-    const actionData = useActionData<typeof action>();
+    
     return <h1>{loaderData.loader} {actionData.action}</h1>;
   },
 });

@@ -62,7 +62,7 @@ export default defineRoute({
   HydrateFallback() {
     return <p>Loading Game...</p>;
   },
-  Component({ data }) {
+  Component({ loaderData: data }) {
     
     return <h1>User: {data.userId}</h1>;
   },
