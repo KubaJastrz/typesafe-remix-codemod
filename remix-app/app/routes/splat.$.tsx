@@ -1,7 +1,7 @@
-import { LoaderFunctionArgs } from "@remix-run/node";
+import { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 
-export const links = [{ rel: "stylesheet", href: "/styles.css" }];
+export const links: LinksFunction = () => [{ rel: "stylesheet", href: "/styles.css" }];
 
 export function loader({ params }: LoaderFunctionArgs) {
   const splat = params["*"];
