@@ -6,7 +6,6 @@ expression: "codemod(&input, source_type).unwrap()"
 import type { LoaderFunctionArgs } from "@remix-run/node";
 
 
-
 export default defineRoute({
   serverLoader: ({ params, context, request, response }: LoaderFunctionArgs) => ({ hello: "world" }),
 });

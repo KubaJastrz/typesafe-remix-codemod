@@ -8,9 +8,6 @@ import { useActionData, useLoaderData } from "@remix-run/react";
 
 
 
-
-
-
 export default defineRoute({
   serverLoader() {
     return { loader: "hello" };
@@ -19,8 +16,6 @@ export default defineRoute({
     return { action: "world" };
   },
   Component({ loaderData, actionData }) {
-    
-    
     return <h1>{loaderData.loader} {actionData.action}</h1>;
   },
 });

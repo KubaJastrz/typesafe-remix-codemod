@@ -1,5 +1,8 @@
 // Simplified version of https://github.com/oxc-project/oxc/blob/crates_v0.13.3/crates/oxc_linter/src/fixer.rs
 // MIT License (c) 2023 Boshen
+//
+// Our modifications:
+// - Add Fix#trim_leading_whitespace
 
 use std::borrow::Cow;
 
@@ -10,6 +13,7 @@ pub struct Fix<'a> {
     pub content: Cow<'a, str>,
     pub span: Span,
     fixed: bool,
+    trim_leading_whitespace: bool,
 }
 
 #[allow(unused)]
@@ -19,6 +23,16 @@ impl<'a> Fix<'a> {
             content: Cow::Borrowed(""),
             span,
             fixed: false,
+            trim_leading_whitespace: false,
+        }
+    }
+
+    pub const fn delete_with_leading_whitespace(span: Span) -> Self {
+        Self {
+            content: Cow::Borrowed(""),
+            span,
+            fixed: false,
+            trim_leading_whitespace: true,
         }
     }
 
@@ -27,6 +41,7 @@ impl<'a> Fix<'a> {
             content: content.into(),
             span,
             fixed: false,
+            trim_leading_whitespace: false,
         }
     }
 }
@@ -65,14 +80,26 @@ impl<'a> Fixer<'a> {
                 return;
             }
 
+            let offset = usize::try_from(last_pos.max(0)).ok().unwrap();
+
+            let start = if fix.trim_leading_whitespace {
+                get_position_of_nearest_leading_newline(&source_text, start)
+            } else {
+                start
+            };
+
+            // Copy the text before the current fix
+            output.push_str(dbg!(&source_text[offset..start as usize]));
+            // Apply the current fix
+            output.push_str(&fix.content);
+
+            last_pos = i64::from(end);
+
             fix.fixed = true;
             fixed = true;
-            let offset = usize::try_from(last_pos.max(0)).ok().unwrap();
-            output.push_str(&source_text[offset..start as usize]);
-            output.push_str(&fix.content);
-            last_pos = i64::from(end);
         });
 
+        // Copy the text after the last fix
         let offset = usize::try_from(last_pos.max(0)).ok().unwrap();
         output.push_str(&source_text[offset..]);
 
@@ -88,4 +115,16 @@ impl<'a> Fixer<'a> {
             fixes,
         }
     }
+}
+
+/// Find nearest \n before the given position
+fn get_position_of_nearest_leading_newline(s: &str, starting_position: u32) -> u32 {
+    let mut pos = starting_position;
+    while pos > 0 {
+        pos -= 1;
+        if s.as_bytes()[pos as usize] == b'\n' {
+            return pos;
+        }
+    }
+    starting_position
 }

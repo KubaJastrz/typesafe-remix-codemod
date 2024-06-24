@@ -7,14 +7,11 @@ import { useLoaderData } from "@remix-run/react";
 
 
 
-
-
 export default defineRoute({
   serverLoader() {
     return { hello: "world", foo: "bar" };
   },
   Component({ loaderData: { hello, ...rest } }) {
-    
     return <h1>{hello}</h1>;
   },
 });

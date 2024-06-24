@@ -18,17 +18,7 @@ export const headers: HeadersFunction = ({ actionHeaders, errorHeaders, loaderHe
   "Cache-Control": loaderHeaders.get("Cache-Control"),
 });
 
-
 const title = "User page";
-
-
-
-
-
-
-
-
-
 
 
 
@@ -63,7 +53,6 @@ export default defineRoute({
     return <p>Loading Game...</p>;
   },
   Component({ loaderData: data }) {
-    
     return <h1>User: {data.userId}</h1>;
   },
   ErrorBoundary() {

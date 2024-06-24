@@ -60,7 +60,7 @@ fn first_pass(
             if let Some((whole_declaration, declarator_id)) =
                 find_hook_usage(var_decl, "useLoaderData")
             {
-                first_pass_fixes.push(Fix::delete(whole_declaration));
+                first_pass_fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
                 hook_declarators.push(HookDeclarator {
                     name: "loaderData",
                     source_text: declarator_id.source_text(source_text),
@@ -69,7 +69,7 @@ fn first_pass(
             if let Some((whole_declaration, declarator_id)) =
                 find_hook_usage(var_decl, "useActionData")
             {
-                first_pass_fixes.push(Fix::delete(whole_declaration));
+                first_pass_fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
                 hook_declarators.push(HookDeclarator {
                     name: "actionData",
                     source_text: declarator_id.source_text(source_text),
@@ -133,7 +133,7 @@ fn second_pass(
                         body: export_meta.body,
                         is_async: export_meta.is_async,
                     });
-                    second_pass_fixes.push(Fix::delete(named_export.span));
+                    second_pass_fixes.push(Fix::delete_with_leading_whitespace(named_export.span));
                 }
             }
         } else if let AstKind::ExportDefaultDeclaration(default_export) = node.kind() {
@@ -149,7 +149,7 @@ fn second_pass(
                 body: export_meta.body,
                 is_async: export_meta.is_async,
             });
-            second_pass_fixes.push(Fix::delete(default_export.span));
+            second_pass_fixes.push(Fix::delete_with_leading_whitespace(default_export.span));
         }
     }
 
