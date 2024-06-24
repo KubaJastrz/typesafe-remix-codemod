@@ -1,14 +1,37 @@
 ---
 source: src/codemod.rs
-description: "import { ActionFunctionArgs, LoaderFunctionArgs } from \"@remix-run/node\";\nimport { useLoaderData } from \"@remix-run/react\";\n\nexport const meta = () => [{ title }];\n\nconst title = \"User page\";\n\nexport function action({ params, response }: ActionFunctionArgs) {\n  response.status = 307;\n  response.headers.set(\"Location\", \"/login\");\n  return response;\n}\n\nexport const loader = async ({ params }: LoaderFunctionArgs) => {\n  const { userId } = params;\n  return { userId };\n};\n\nexport default function Splat() {\n  const data = useLoaderData<typeof loader>();\n  return <h1>User: {data.userId}</h1>;\n}\n"
+description: "import {\n  ActionFunctionArgs, LoaderFunctionArgs, LinksFunction, HeadersFunction,\n  ClientActionFunctionArgs, ClientLoaderFunctionArgs, ShouldRevalidateFunction\n} from \"@remix-run/node\";\nimport { useLoaderData } from \"@remix-run/react\";\n\nexport const handle = {\n  its: \"all yours\",\n};\n\nexport const headers: HeadersFunction = ({ actionHeaders, errorHeaders, loaderHeaders, parentHeaders }) => ({\n  \"X-Stretchy-Pants\": \"its for fun\",\n  \"Cache-Control\": loaderHeaders.get(\"Cache-Control\"),\n});\n\nexport const meta = () => [{ title }];\nconst title = \"User page\";\n\nexport function action({ params, response }: ActionFunctionArgs) {\n  response.status = 307;\n  response.headers.set(\"Location\", \"/login\");\n  return response;\n}\n\nexport const clientAction = async ({ request, params, serverAction }: ClientActionFunctionArgs) => {\n  console.log('I am a client action');\n  return await serverAction();\n};\n\nexport const loader = async ({ params }: LoaderFunctionArgs) => {\n  const { userId } = params;\n  return { userId };\n};\n\nexport const clientLoader = async ({ request, params, serverLoader }: ClientLoaderFunctionArgs) => {\n  const serverData = await serverLoader();\n  const data = getDataFromClient();\n  return data;\n};\n\nexport function HydrateFallback() {\n  return <p>Loading Game...</p>;\n}\n\nexport default function Splat() {\n  const data = useLoaderData<typeof loader>();\n  return <h1>User: {data.userId}</h1>;\n}\n\nexport function ErrorBoundary() {\n  const error = useRouteError();\n  return <h1>Something went wrong</h1>;\n}\n\nexport const links: LinksFunction = () => ([\n  { rel: \"icon\", href: \"/favicon.png\", type: \"image/png\" },\n  { rel: \"stylesheet\", href: \"https://example.com/some/styles.css\" },\n]);\n\nexport const shouldRevalidate: ShouldRevalidateFunction = ({\n  actionResult, currentParams, currentUrl, defaultShouldRevalidate,\n  formAction, formData, formEncType, formMethod, nextParams, nextUrl\n}) => {\n  return true;\n};\n"
 expression: "codemod(&input, source_type).unwrap()"
 ---
-import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import {
+  ActionFunctionArgs, LoaderFunctionArgs, LinksFunction, HeadersFunction,
+  ClientActionFunctionArgs, ClientLoaderFunctionArgs, ShouldRevalidateFunction
+} from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 
+export const handle = {
+  its: "all yours",
+};
+
+export const headers: HeadersFunction = ({ actionHeaders, errorHeaders, loaderHeaders, parentHeaders }) => ({
+  "X-Stretchy-Pants": "its for fun",
+  "Cache-Control": loaderHeaders.get("Cache-Control"),
+});
 
 
 const title = "User page";
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -23,12 +46,38 @@ export default defineRoute({
     response.headers.set("Location", "/login");
     return response;
   },
+  async clientAction({ request, params, serverAction }: ClientActionFunctionArgs) {
+    console.log('I am a client action');
+    return await serverAction();
+  },
   async loader({ params }: LoaderFunctionArgs) {
     const { userId } = params;
     return { userId };
   },
+  async clientLoader({ request, params, serverLoader }: ClientLoaderFunctionArgs) {
+    const serverData = await serverLoader();
+    const data = getDataFromClient();
+    return data;
+  },
+  HydrateFallback() {
+    return <p>Loading Game...</p>;
+  },
   Component({ data }) {
     
     return <h1>User: {data.userId}</h1>;
+  },
+  ErrorBoundary() {
+    const error = useRouteError();
+    return <h1>Something went wrong</h1>;
+  },
+  links: () => ([
+    { rel: "icon", href: "/favicon.png", type: "image/png" },
+    { rel: "stylesheet", href: "https://example.com/some/styles.css" },
+  ]),
+  shouldRevalidate({
+    actionResult, currentParams, currentUrl, defaultShouldRevalidate,
+    formAction, formData, formEncType, formMethod, nextParams, nextUrl
+  }) {
+    return true;
   },
 });

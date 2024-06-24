@@ -95,18 +95,17 @@ fn second_pass(
         .with_trivias(ret.trivias)
         .build(&ret.program);
 
+    // TODO: There are also `headers` and `handle`
     let known_remix_exports = vec![
-        "handle",
-        "meta",
         "links",
+        "HydrateFallback",
         "loader",
         "clientLoader",
         "action",
         "clientAction",
-        "headers",
+        "meta",
         "default",
         "ErrorBoundary",
-        "HydrateFallback",
         "shouldRevalidate",
     ];
 
@@ -414,11 +413,22 @@ mod tests {
     #[test]
     fn test_kitchen_sink() {
         let input = r#"
-            import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+            import {
+              ActionFunctionArgs, LoaderFunctionArgs, LinksFunction, HeadersFunction,
+              ClientActionFunctionArgs, ClientLoaderFunctionArgs, ShouldRevalidateFunction
+            } from "@remix-run/node";
             import { useLoaderData } from "@remix-run/react";
 
-            export const meta = () => [{ title }];
+            export const handle = {
+              its: "all yours",
+            };
 
+            export const headers: HeadersFunction = ({ actionHeaders, errorHeaders, loaderHeaders, parentHeaders }) => ({
+              "X-Stretchy-Pants": "its for fun",
+              "Cache-Control": loaderHeaders.get("Cache-Control"),
+            });
+
+            export const meta = () => [{ title }];
             const title = "User page";
 
             export function action({ params, response }: ActionFunctionArgs) {
@@ -427,15 +437,47 @@ mod tests {
               return response;
             }
 
+            export const clientAction = async ({ request, params, serverAction }: ClientActionFunctionArgs) => {
+              console.log('I am a client action');
+              return await serverAction();
+            };
+
             export const loader = async ({ params }: LoaderFunctionArgs) => {
               const { userId } = params;
               return { userId };
             };
 
+            export const clientLoader = async ({ request, params, serverLoader }: ClientLoaderFunctionArgs) => {
+              const serverData = await serverLoader();
+              const data = getDataFromClient();
+              return data;
+            };
+
+            export function HydrateFallback() {
+              return <p>Loading Game...</p>;
+            }
+
             export default function Splat() {
               const data = useLoaderData<typeof loader>();
               return <h1>User: {data.userId}</h1>;
             }
+
+            export function ErrorBoundary() {
+              const error = useRouteError();
+              return <h1>Something went wrong</h1>;
+            }
+
+            export const links: LinksFunction = () => ([
+              { rel: "icon", href: "/favicon.png", type: "image/png" },
+              { rel: "stylesheet", href: "https://example.com/some/styles.css" },
+            ]);
+
+            export const shouldRevalidate: ShouldRevalidateFunction = ({
+              actionResult, currentParams, currentUrl, defaultShouldRevalidate,
+              formAction, formData, formEncType, formMethod, nextParams, nextUrl
+            }) => {
+              return true;
+            };
         "#;
         assert_snapshot("kitchen_sink", input);
     }
