@@ -10,7 +10,7 @@ use oxc_parser::Parser;
 use oxc_semantic::{AstNode, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType, Span};
 
-use std::{collections::HashMap, process, vec};
+use std::{process, vec};
 
 use crate::fixer::{Fix, Fixer};
 
@@ -27,7 +27,11 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
     second_pass
 }
 
-type HookDeclarators<'a> = HashMap<&'static str, &'a str>;
+struct HookDeclarator<'a> {
+    name: &'a str,
+    source_text: &'a str,
+}
+type HookDeclarators<'a> = Vec<HookDeclarator<'a>>;
 
 fn first_pass(
     source_text: &String,
@@ -49,7 +53,7 @@ fn first_pass(
         .build(&ret.program);
 
     let mut first_pass_fixes: Vec<Fix> = vec![];
-    let mut hook_declarators: HookDeclarators = HashMap::new();
+    let mut hook_declarators: HookDeclarators = vec![];
 
     for node in semantic_ret.semantic.nodes().iter() {
         if let AstKind::VariableDeclaration(var_decl) = node.kind() {
@@ -57,13 +61,19 @@ fn first_pass(
                 find_hook_usage(var_decl, "useLoaderData")
             {
                 first_pass_fixes.push(Fix::delete(whole_declaration));
-                hook_declarators.insert("loaderData", declarator_id.source_text(source_text));
+                hook_declarators.push(HookDeclarator {
+                    name: "loaderData",
+                    source_text: declarator_id.source_text(source_text),
+                });
             }
             if let Some((whole_declaration, declarator_id)) =
                 find_hook_usage(var_decl, "useActionData")
             {
                 first_pass_fixes.push(Fix::delete(whole_declaration));
-                hook_declarators.insert("actionData", declarator_id.source_text(source_text));
+                hook_declarators.push(HookDeclarator {
+                    name: "actionData",
+                    source_text: declarator_id.source_text(source_text),
+                });
             }
         }
     }
@@ -401,11 +411,11 @@ fn find_hook_usage(var_decl: &VariableDeclaration, hook_name: &str) -> Option<(S
 fn construct_component_params(hook_declarators: &HookDeclarators) -> Option<String> {
     let mut params = vec![];
 
-    for (key, value) in hook_declarators.iter() {
-        let param = if key == value {
-            format!("{key}")
+    for declarator in hook_declarators.iter() {
+        let param = if declarator.name == declarator.source_text {
+            format!("{}", declarator.name)
         } else {
-            format!("{key}: {value}")
+            format!("{}: {}", declarator.name, declarator.source_text)
         };
         params.push(param.to_owned());
     }
