@@ -10,7 +10,7 @@ import { useActionData } from "@remix-run/react";
 
 
 export default defineRoute({
-  action() {
+  serverAction() {
     return { hello: "world" };
   },
   Component() {

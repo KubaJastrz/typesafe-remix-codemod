@@ -41,7 +41,7 @@ const title = "User page";
 
 export default defineRoute({
   meta: () => [{ title }],
-  action({ params, response }: ActionFunctionArgs) {
+  serverAction({ params, response }: ActionFunctionArgs) {
     response.status = 307;
     response.headers.set("Location", "/login");
     return response;
@@ -50,7 +50,7 @@ export default defineRoute({
     console.log('I am a client action');
     return await serverAction();
   },
-  async loader({ params }: LoaderFunctionArgs) {
+  async serverLoader({ params }: LoaderFunctionArgs) {
     const { userId } = params;
     return { userId };
   },

@@ -119,7 +119,7 @@ fn second_pass(
                 if known_remix_exports.contains(&name) {
                     let export_meta = get_export_function_meta(&node, source_text);
                     remix_exports.push(RemixModuleExport {
-                        key: name,
+                        key: export_meta.new_name.unwrap_or(name),
                         span: export_meta.span,
                         args: export_meta.args,
                         body: export_meta.body,
@@ -184,6 +184,7 @@ fn construct_new_module_object(
         .collect();
 
     // Keep the original order of exports
+    // TODO: sort by predefined order, as in `known_remix_exports`
     exports_with_span.sort_by(|a, b| a.span.unwrap().start.cmp(&b.span.unwrap().start));
 
     for export in exports_with_span.iter() {
@@ -251,8 +252,10 @@ struct ExportFunctionMeta<'a> {
     args: Option<String>,
     body: Option<&'a str>,
     is_async: bool,
+    new_name: Option<&'a str>,
 }
 
+// TODO: what about class components? (default Component, named ErrorBoundary, named HydrateFallback)
 fn get_export_function_meta<'a>(
     node: &'a AstNode<'a>,
     source_text: &'a str,
@@ -262,6 +265,7 @@ fn get_export_function_meta<'a>(
     match node.kind() {
         AstKind::ExportNamedDeclaration(named_export) => {
             if let Some(Declaration::FunctionDeclaration(decl)) = &named_export.declaration {
+                meta.new_name = rename_exports(decl.id.as_ref().map(|id| id.name.as_str()));
                 meta.span = Some(decl.span);
                 meta.args = Some(
                     // remove the parentheses
@@ -281,6 +285,8 @@ fn get_export_function_meta<'a>(
                 if let Some(d) = decl.declarations.first() {
                     if let BindingPatternKind::BindingIdentifier(_) = &d.id.kind {
                         if let Some(init) = &d.init {
+                            meta.new_name =
+                                rename_exports(d.id.get_identifier().map(|i| i.as_str()));
                             meta.span = Some(init.span());
 
                             match init {
@@ -365,6 +371,14 @@ fn get_export_function_meta<'a>(
     }
 
     meta
+}
+
+fn rename_exports<'a>(old_name: Option<&'a str>) -> Option<&str> {
+    match old_name {
+        Some("loader") => Some("serverLoader"),
+        Some("action") => Some("serverAction"),
+        _ => None,
+    }
 }
 
 fn find_hook_usage(var_decl: &VariableDeclaration, hook_name: &str) -> Option<(Span, Span)> {

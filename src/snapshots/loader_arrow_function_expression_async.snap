@@ -1,8 +1,8 @@
 ---
 source: src/codemod.rs
 description: "export const loader = async () => ({ hello: \"world\" });\n"
-expression: "codemod(input, source_type).unwrap()"
+expression: "codemod(&input, source_type).unwrap()"
 ---
 export default defineRoute({
-  loader: async () => ({ hello: "world" }),
+  serverLoader: async () => ({ hello: "world" }),
 });

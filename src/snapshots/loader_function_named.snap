@@ -1,10 +1,10 @@
 ---
 source: src/codemod.rs
 description: "export function loader() {\n  return { hello: \"world\" };\n}\n"
-expression: "codemod(input, source_type).unwrap()"
+expression: "codemod(&input, source_type).unwrap()"
 ---
 export default defineRoute({
-  loader() {
+  serverLoader() {
     return { hello: "world" };
   },
 });

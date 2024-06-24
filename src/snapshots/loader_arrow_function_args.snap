@@ -1,14 +1,14 @@
 ---
 source: src/codemod.rs
 description: "import type { LoaderFunctionArgs } from \"@remix-run/node\";\n\nexport const loader = ({ params, context, request, response }: LoaderFunctionArgs) => {\n  return { hello: \"world\" };\n}\n"
-expression: "codemod(input, source_type).unwrap()"
+expression: "codemod(&input, source_type).unwrap()"
 ---
 import type { LoaderFunctionArgs } from "@remix-run/node";
 
 
 
 export default defineRoute({
-  loader({ params, context, request, response }: LoaderFunctionArgs) {
+  serverLoader({ params, context, request, response }: LoaderFunctionArgs) {
     return { hello: "world" };
   },
 });
