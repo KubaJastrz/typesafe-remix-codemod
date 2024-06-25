@@ -1,0 +1,32 @@
+---
+source: src/codemod.rs
+description: "import type { LoaderFunctionArgs, ClientLoaderFunctionArgs } from \"@remix-run/node\";\nimport { useLoaderData } from \"@remix-run/react\";\n\nexport async function loader({ request }: LoaderFunctionArgs) {\n  const partialData = await getPartialDataFromDb({ request });\n  return json(partialData);\n}\n\nexport async function clientLoader({ request, serverLoader }: ClientLoaderFunctionArgs) {\n  const [serverData, clientData] = await Promise.all([\n    serverLoader(),\n    getClientData(request),\n  ]);\n  return { ...serverData, ...clientData };\n}\nclientLoader.hydrate = true;\n\nexport function HydrateFallback() {\n  return <p>Skeleton rendered during SSR</p>;\n}\n\nexport default function Component() {\n  const data = useLoaderData();\n  return <pre>{JSON.stringify(data, null, 2)}</pre>;\n}\n"
+expression: "codemod(&input, source_type).unwrap()"
+---
+import type { LoaderFunctionArgs, ClientLoaderFunctionArgs } from "@remix-run/node";
+import { useLoaderData } from "@remix-run/react";
+
+
+
+
+
+export default defineRoute({
+  async serverLoader({ request }: LoaderFunctionArgs) {
+    const partialData = await getPartialDataFromDb({ request });
+    return json(partialData);
+  },
+  async clientLoader({ request, serverLoader }: ClientLoaderFunctionArgs) {
+    const [serverData, clientData] = await Promise.all([
+      serverLoader(),
+      getClientData(request),
+    ]);
+    return { ...serverData, ...clientData };
+  },
+  HydrateFallback() {
+    return <p>Skeleton rendered during SSR</p>;
+  },
+  Component({ loaderData: data }) {
+    return <pre>{JSON.stringify(data, null, 2)}</pre>;
+  },
+  clientLoaderHydrate: true,
+});

@@ -1,8 +1,8 @@
 use oxc_allocator::Allocator;
 use oxc_ast::{
     ast::{
-        BindingPatternKind, Declaration, ExportDefaultDeclarationKind, Expression,
-        VariableDeclaration,
+        AssignmentTarget, BindingPatternKind, Declaration, ExportDefaultDeclarationKind,
+        Expression, VariableDeclaration,
     },
     AstKind,
 };
@@ -10,33 +10,20 @@ use oxc_parser::Parser;
 use oxc_semantic::{AstNode, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType, Span};
 
-use std::{process, vec};
+use std::{cmp::Ordering, process, vec};
 
-use crate::fixer::{Fix, Fixer};
+use crate::{
+    codemod_models::{self, DefineRouteProperty, Method, StaticProperty},
+    fixer::{Fix, Fixer},
+};
+
+use codemod_models::HookDeclarator;
 
 pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, ()> {
-    let first_pass = first_pass(&source_text, source_type);
+    //==========================================================================
+    // First pass
+    //==========================================================================
 
-    if first_pass.is_err() {
-        return Err(());
-    }
-
-    let (first_pass_code, hook_declarators) = first_pass.unwrap();
-    let second_pass = second_pass(&first_pass_code, source_type, &hook_declarators);
-
-    second_pass
-}
-
-struct HookDeclarator<'a> {
-    name: &'a str,
-    source_text: &'a str,
-}
-type HookDeclarators<'a> = Vec<HookDeclarator<'a>>;
-
-fn first_pass(
-    source_text: &String,
-    source_type: SourceType,
-) -> Result<(String, HookDeclarators), ()> {
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, &source_text, source_type).parse();
 
@@ -52,52 +39,61 @@ fn first_pass(
         .with_trivias(ret.trivias)
         .build(&ret.program);
 
-    let mut first_pass_fixes: Vec<Fix> = vec![];
-    let mut hook_declarators: HookDeclarators = vec![];
+    let mut fixes = vec![];
+    let mut remix_exports = vec![];
+    let mut hook_declarators = vec![];
 
     for node in semantic_ret.semantic.nodes().iter() {
-        if let AstKind::VariableDeclaration(var_decl) = node.kind() {
-            if let Some((whole_declaration, declarator_id)) =
-                find_hook_usage(var_decl, "useLoaderData")
-            {
-                first_pass_fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
-                hook_declarators.push(HookDeclarator {
-                    name: "loaderData",
-                    source_text: declarator_id.source_text(source_text),
-                });
+        match node.kind() {
+            AstKind::VariableDeclaration(var_decl) => {
+                if let Some((whole_declaration, declarator_id)) =
+                    find_hook_usage(var_decl, "useLoaderData")
+                {
+                    fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
+                    hook_declarators.push(HookDeclarator {
+                        name: "loaderData",
+                        source_text: declarator_id.source_text(source_text),
+                    });
+                }
+                if let Some((whole_declaration, declarator_id)) =
+                    find_hook_usage(var_decl, "useActionData")
+                {
+                    fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
+                    hook_declarators.push(HookDeclarator {
+                        name: "actionData",
+                        source_text: declarator_id.source_text(source_text),
+                    });
+                }
             }
-            if let Some((whole_declaration, declarator_id)) =
-                find_hook_usage(var_decl, "useActionData")
-            {
-                first_pass_fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
-                hook_declarators.push(HookDeclarator {
-                    name: "actionData",
-                    source_text: declarator_id.source_text(source_text),
-                });
+            AstKind::ExpressionStatement(expr_stmt) => {
+                if let Expression::AssignmentExpression(assignment_expr) = &expr_stmt.expression {
+                    if matches!(
+                        &assignment_expr.left,
+                        AssignmentTarget::StaticMemberExpression(member_expr)
+                            if matches!(&member_expr.object, Expression::Identifier(ident) if ident.name == "clientLoader")
+                            && member_expr.property.name == "hydrate"
+                    ) {
+                        let value = assignment_expr.right.span().source_text(source_text);
+                        remix_exports.push(DefineRouteProperty::StaticProperty(StaticProperty {
+                            key: "clientLoaderHydrate",
+                            value,
+                        }));
+                        fixes.push(Fix::delete_with_leading_whitespace(expr_stmt.span));
+                    }
+                }
             }
+            _ => {}
         }
     }
 
-    let first_pass_code = Fixer::new(&source_text, first_pass_fixes).fix().fixed_code;
+    let source_text = Fixer::new(&source_text, fixes).fix().fixed_code;
 
-    Ok((first_pass_code.to_string(), hook_declarators))
-}
+    //==========================================================================
+    // Second pass
+    //==========================================================================
 
-fn second_pass(
-    source_text: &String,
-    source_type: SourceType,
-    hook_declarators: &HookDeclarators,
-) -> Result<String, ()> {
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, &source_text, source_type).parse();
-
-    if !ret.errors.is_empty() {
-        for error in ret.errors {
-            let error = error.with_source_code(source_text.clone());
-            println!("{error:?}");
-        }
-        process::exit(1);
-    }
 
     let semantic_ret = SemanticBuilder::new(&source_text, source_type)
         .with_trivias(ret.trivias)
@@ -117,23 +113,21 @@ fn second_pass(
         "shouldRevalidate",
     ];
 
-    let mut remix_exports = vec![];
-
-    let mut second_pass_fixes: Vec<Fix> = vec![];
+    let mut fixes = vec![];
 
     for node in semantic_ret.semantic.nodes().iter() {
         if let AstKind::ExportNamedDeclaration(named_export) = node.kind() {
             if let Some(name) = get_named_export_name(&node) {
                 if known_remix_exports.contains(&name) {
-                    let export_meta = get_export_function_meta(&node, source_text);
-                    remix_exports.push(RemixModuleExport {
+                    let export_meta = get_export_function_meta(&node, &source_text);
+                    remix_exports.push(DefineRouteProperty::Method(Method {
                         key: export_meta.new_name.unwrap_or(name),
                         span: export_meta.span,
                         args: export_meta.args,
                         body: export_meta.body,
                         is_async: export_meta.is_async,
-                    });
-                    second_pass_fixes.push(Fix::delete_with_leading_whitespace(named_export.span));
+                    }));
+                    fixes.push(Fix::delete_with_leading_whitespace(named_export.span));
                 }
             }
         } else if let AstKind::ExportDefaultDeclaration(default_export) = node.kind() {
@@ -141,15 +135,15 @@ fn second_pass(
                 println!("File already has a new module default export");
                 return Err(());
             }
-            let export_meta = get_export_function_meta(&node, source_text);
-            remix_exports.push(RemixModuleExport {
+            let export_meta = get_export_function_meta(&node, &source_text);
+            remix_exports.push(DefineRouteProperty::Method(Method {
                 key: "Component",
                 span: export_meta.span,
                 args: construct_component_params(&hook_declarators),
                 body: export_meta.body,
                 is_async: export_meta.is_async,
-            });
-            second_pass_fixes.push(Fix::delete_with_leading_whitespace(default_export.span));
+            }));
+            fixes.push(Fix::delete_with_leading_whitespace(default_export.span));
         }
     }
 
@@ -159,57 +153,62 @@ fn second_pass(
 
     let new_export_position = source_text.len() as u32;
 
-    second_pass_fixes.push(Fix::insert(
-        construct_new_module_object(&remix_exports, source_text),
+    fixes.push(Fix::insert(
+        construct_new_module_object(&mut remix_exports, &source_text),
         Span::new(new_export_position, new_export_position),
     ));
 
-    let second_pass_code = Fixer::new(&source_text, second_pass_fixes).fix().fixed_code;
+    let fixed_code = Fixer::new(&source_text, fixes).fix().fixed_code.to_string();
 
-    Ok(second_pass_code.to_string())
+    Ok(fixed_code)
 }
 
-#[derive(Debug)]
-struct RemixModuleExport<'a> {
-    key: &'a str,
-    span: Option<Span>,
-    args: Option<String>,
-    body: Option<&'a str>,
-    is_async: bool,
-}
-
-fn construct_new_module_object(
-    remix_exports: &Vec<RemixModuleExport>,
-    source_text: &String,
+fn construct_new_module_object<'a>(
+    properties: &mut Vec<DefineRouteProperty>,
+    source_text: &'a str,
 ) -> String {
     let mut module_object = String::from("export default defineRoute({\n");
 
     // module_object.push_str("  params: [],\n");
 
-    let mut exports_with_span: Vec<_> = remix_exports
-        .iter()
-        .filter(|export| export.span.is_some())
-        .collect();
-
-    // Keep the original order of exports
+    // Keep the original order of exports, put static properties at the end
     // TODO: sort by predefined order, as in `known_remix_exports`
-    exports_with_span.sort_by(|a, b| a.span.unwrap().start.cmp(&b.span.unwrap().start));
+    properties.sort_by(|a, b| match (a, b) {
+        (DefineRouteProperty::StaticProperty(a), DefineRouteProperty::StaticProperty(b)) => {
+            a.key.cmp(&b.key)
+        }
+        (DefineRouteProperty::Method(a), DefineRouteProperty::Method(b)) => {
+            a.span.unwrap().cmp(&b.span.unwrap())
+        }
+        (DefineRouteProperty::StaticProperty(_), DefineRouteProperty::Method(_)) => {
+            Ordering::Greater
+        }
+        (DefineRouteProperty::Method(_), DefineRouteProperty::StaticProperty(_)) => Ordering::Less,
+    });
 
-    for export in exports_with_span.iter() {
-        if let Some(body) = export.body {
-            module_object.push_str(&format!(
-                "{}{}({}) {},\n",
-                if export.is_async { "async " } else { "" },
-                export.key,
-                export.args.as_ref().unwrap_or(&String::from("")),
-                body
-            ));
-        } else {
-            module_object.push_str(&format!(
-                "{}: {},\n",
-                export.key,
-                export.span.unwrap().source_text(source_text)
-            ));
+    for export in properties.iter() {
+        match export {
+            DefineRouteProperty::StaticProperty(static_prop) => {
+                module_object.push_str(&format!("{}: {},\n", static_prop.key, static_prop.value));
+            }
+            DefineRouteProperty::Method(method) => {
+                // TODO: a Method should always have `body`, otherwise it should be a StaticProperty
+                if let Some(body) = method.body {
+                    module_object.push_str(&format!(
+                        "{}{}({}) {},\n",
+                        if method.is_async { "async " } else { "" },
+                        method.key,
+                        method.args.as_ref().unwrap_or(&String::from("")),
+                        body,
+                    ));
+                } else {
+                    module_object.push_str(&format!(
+                        "{}: {},\n",
+                        method.key,
+                        method.span.unwrap().source_text(source_text)
+                    ));
+                }
+            }
         }
     }
 
@@ -408,7 +407,7 @@ fn find_hook_usage(var_decl: &VariableDeclaration, hook_name: &str) -> Option<(S
     None
 }
 
-fn construct_component_params(hook_declarators: &HookDeclarators) -> Option<String> {
+fn construct_component_params(hook_declarators: &Vec<HookDeclarator>) -> Option<String> {
     let mut params = vec![];
 
     for declarator in hook_declarators.iter() {
@@ -746,6 +745,38 @@ mod tests {
             }
         "#;
         assert_snapshot("component_loader_action", input);
+    }
+
+    #[test]
+    fn test_component_client_loader_hydrate() {
+        let input = r#"
+            import type { LoaderFunctionArgs, ClientLoaderFunctionArgs } from "@remix-run/node";
+            import { useLoaderData } from "@remix-run/react";
+
+            export async function loader({ request }: LoaderFunctionArgs) {
+              const partialData = await getPartialDataFromDb({ request });
+              return json(partialData);
+            }
+
+            export async function clientLoader({ request, serverLoader }: ClientLoaderFunctionArgs) {
+              const [serverData, clientData] = await Promise.all([
+                serverLoader(),
+                getClientData(request),
+              ]);
+              return { ...serverData, ...clientData };
+            }
+            clientLoader.hydrate = true;
+
+            export function HydrateFallback() {
+              return <p>Skeleton rendered during SSR</p>;
+            }
+
+            export default function Component() {
+              const data = useLoaderData();
+              return <pre>{JSON.stringify(data, null, 2)}</pre>;
+            }
+        "#;
+        assert_snapshot("component_client_loader_hydrate", input);
     }
 
     fn assert_snapshot(name: &str, input: &str) {

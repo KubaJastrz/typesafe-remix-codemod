@@ -89,7 +89,7 @@ impl<'a> Fixer<'a> {
             };
 
             // Copy the text before the current fix
-            output.push_str(dbg!(&source_text[offset..start as usize]));
+            output.push_str(&source_text[offset..start as usize]);
             // Apply the current fix
             output.push_str(&fix.content);
 
