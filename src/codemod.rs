@@ -1,8 +1,8 @@
 use oxc_allocator::Allocator;
 use oxc_ast::{
     ast::{
-        AssignmentTarget, BindingPatternKind, Declaration, ExportDefaultDeclarationKind,
-        Expression, VariableDeclaration,
+        AssignmentTarget, BindingPatternKind, Declaration, ExportDefaultDeclaration,
+        ExportDefaultDeclarationKind, ExportNamedDeclaration, Expression, VariableDeclaration,
     },
     AstKind,
 };
@@ -119,14 +119,10 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
         if let AstKind::ExportNamedDeclaration(named_export) = node.kind() {
             if let Some(name) = get_named_export_name(&node) {
                 if known_remix_exports.contains(&name) {
-                    let export_meta = get_export_function_meta(&node, &source_text);
-                    remix_exports.push(DefineRouteProperty::Method(Method {
-                        key: export_meta.new_name.unwrap_or(name),
-                        span: export_meta.span,
-                        args: export_meta.args,
-                        body: export_meta.body,
-                        is_async: export_meta.is_async,
-                    }));
+                    let property = get_named_export_property(&named_export, &source_text);
+                    if let Some(p) = property {
+                        remix_exports.push(p.default_name(name));
+                    }
                     fixes.push(Fix::delete_with_leading_whitespace(named_export.span));
                 }
             }
@@ -135,14 +131,13 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
                 println!("File already has a new module default export");
                 return Err(());
             }
-            let export_meta = get_export_function_meta(&node, &source_text);
-            remix_exports.push(DefineRouteProperty::Method(Method {
-                key: "Component",
-                span: export_meta.span,
-                args: construct_component_params(&hook_declarators),
-                body: export_meta.body,
-                is_async: export_meta.is_async,
-            }));
+            let property = get_default_export_property(&default_export, &source_text);
+            if let Some(p) = property {
+                remix_exports.push(
+                    p.default_name("Component")
+                        .set_args(construct_component_params(&hook_declarators)),
+                );
+            }
             fixes.push(Fix::delete_with_leading_whitespace(default_export.span));
         }
     }
@@ -154,7 +149,7 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
     let new_export_position = source_text.len() as u32;
 
     fixes.push(Fix::insert(
-        construct_new_module_object(&mut remix_exports, &source_text),
+        construct_new_module_object(&mut remix_exports),
         Span::new(new_export_position, new_export_position),
     ));
 
@@ -163,10 +158,7 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
     Ok(fixed_code)
 }
 
-fn construct_new_module_object<'a>(
-    properties: &mut Vec<DefineRouteProperty>,
-    source_text: &'a str,
-) -> String {
+fn construct_new_module_object<'a>(properties: &mut Vec<DefineRouteProperty>) -> String {
     let mut module_object = String::from("export default defineRoute({\n");
 
     // module_object.push_str("  params: [],\n");
@@ -177,9 +169,7 @@ fn construct_new_module_object<'a>(
         (DefineRouteProperty::StaticProperty(a), DefineRouteProperty::StaticProperty(b)) => {
             a.key.cmp(&b.key)
         }
-        (DefineRouteProperty::Method(a), DefineRouteProperty::Method(b)) => {
-            a.span.unwrap().cmp(&b.span.unwrap())
-        }
+        (DefineRouteProperty::Method(a), DefineRouteProperty::Method(b)) => a.span.cmp(&b.span),
         (DefineRouteProperty::StaticProperty(_), DefineRouteProperty::Method(_)) => {
             Ordering::Greater
         }
@@ -192,22 +182,13 @@ fn construct_new_module_object<'a>(
                 module_object.push_str(&format!("{}: {},\n", static_prop.key, static_prop.value));
             }
             DefineRouteProperty::Method(method) => {
-                // TODO: a Method should always have `body`, otherwise it should be a StaticProperty
-                if let Some(body) = method.body {
-                    module_object.push_str(&format!(
-                        "{}{}({}) {},\n",
-                        if method.is_async { "async " } else { "" },
-                        method.key,
-                        method.args.as_ref().unwrap_or(&String::from("")),
-                        body,
-                    ));
-                } else {
-                    module_object.push_str(&format!(
-                        "{}: {},\n",
-                        method.key,
-                        method.span.unwrap().source_text(source_text)
-                    ));
-                }
+                module_object.push_str(&format!(
+                    "{}{}({}) {},\n",
+                    if method.is_async { "async " } else { "" },
+                    method.key,
+                    method.args,
+                    method.body,
+                ));
             }
         }
     }
@@ -253,131 +234,135 @@ fn get_named_export_name<'a>(node: &'a AstNode<'a>) -> Option<&'a str> {
     }
 }
 
-#[derive(Debug, Default)]
-struct ExportFunctionMeta<'a> {
-    span: Option<Span>,
-    args: Option<String>,
-    body: Option<&'a str>,
-    is_async: bool,
-    new_name: Option<&'a str>,
-}
-
-// TODO: what about class components? (default Component, named ErrorBoundary, named HydrateFallback)
-fn get_export_function_meta<'a>(
-    node: &'a AstNode<'a>,
+fn get_named_export_property<'a>(
+    node: &ExportNamedDeclaration<'a>,
     source_text: &'a str,
-) -> ExportFunctionMeta<'a> {
-    let mut meta = ExportFunctionMeta::default();
-
-    match node.kind() {
-        AstKind::ExportNamedDeclaration(named_export) => {
-            if let Some(Declaration::FunctionDeclaration(decl)) = &named_export.declaration {
-                meta.new_name = rename_exports(decl.id.as_ref().map(|id| id.name.as_str()));
-                meta.span = Some(decl.span);
-                meta.args = Some(
+) -> Option<DefineRouteProperty<'a>> {
+    match &node.declaration {
+        Some(Declaration::FunctionDeclaration(decl)) => {
+            if let Some(body) = &decl.body {
+                return Some(DefineRouteProperty::Method(Method {
+                    key: rename_exports(decl.id.as_ref().map(|id| id.name.as_str())).unwrap_or("$"),
+                    span: decl.span,
                     // remove the parentheses
-                    Span::new(decl.params.span.start + 1, decl.params.span.end - 1)
+                    args: Span::new(decl.params.span.start + 1, decl.params.span.end - 1)
                         .source_text(&source_text)
                         .to_owned(),
-                );
-                if let Some(body) = &decl.body {
-                    meta.body = Some(body.span.source_text(&source_text));
-                }
-                meta.is_async = decl.r#async;
-            } else if let Some(Declaration::VariableDeclaration(decl)) = &named_export.declaration {
-                if decl.declarations.len() != 1 {
-                    return meta;
-                }
+                    body: body.span.source_text(&source_text),
+                    is_async: decl.r#async,
+                }));
+            }
+            return None;
+        }
+        Some(Declaration::VariableDeclaration(decl)) => {
+            if decl.declarations.len() != 1 {
+                return None;
+            }
 
-                if let Some(d) = decl.declarations.first() {
-                    if let BindingPatternKind::BindingIdentifier(_) = &d.id.kind {
-                        if let Some(init) = &d.init {
-                            meta.new_name =
-                                rename_exports(d.id.get_identifier().map(|i| i.as_str()));
-                            meta.span = Some(init.span());
+            if let Some(d) = decl.declarations.first() {
+                if let BindingPatternKind::BindingIdentifier(_) = &d.id.kind {
+                    if let Some(init) = &d.init {
+                        let key = rename_exports(d.id.get_identifier().map(|i| i.as_str()))
+                            .unwrap_or("$");
 
-                            match init {
-                                Expression::FunctionExpression(func) => {
-                                    meta.args = Some(
+                        return match init {
+                            Expression::FunctionExpression(func) => {
+                                if let Some(body) = &func.body {
+                                    return Some(DefineRouteProperty::Method(Method {
+                                        key,
+                                        span: func.span,
                                         // remove the parentheses
-                                        Span::new(
+                                        args: Span::new(
                                             func.params.span.start + 1,
                                             func.params.span.end - 1,
                                         )
                                         .source_text(&source_text)
                                         .to_owned(),
-                                    );
-                                    if let Some(body) = &func.body {
-                                        meta.body = Some(body.span.source_text(&source_text))
-                                    }
-                                    meta.is_async = func.r#async;
+                                        body: body.span.source_text(&source_text),
+                                        is_async: func.r#async,
+                                    }));
                                 }
-                                Expression::ArrowFunctionExpression(arrow_func) => {
-                                    // Don't use shorthand for arrow functions with implicit returns, like `() => stuff`
-                                    if arrow_func.expression {
-                                        return meta;
-                                    }
-                                    meta.args = Some(
-                                        // remove the parentheses
-                                        Span::new(
-                                            arrow_func.params.span.start + 1,
-                                            arrow_func.params.span.end - 1,
-                                        )
-                                        .source_text(&source_text)
-                                        .to_owned(),
-                                    );
-                                    meta.body =
-                                        Some(&arrow_func.body.span.source_text(&source_text));
-                                    meta.is_async = arrow_func.r#async;
-                                }
-                                _ => {}
+                                return None;
                             }
-                        }
+                            Expression::ArrowFunctionExpression(arrow_func) => {
+                                // Don't use shorthand for arrow functions with implicit returns, like `() => stuff`
+                                if arrow_func.expression {
+                                    return Some(DefineRouteProperty::StaticProperty(
+                                        StaticProperty {
+                                            key,
+                                            value: arrow_func.span.source_text(source_text),
+                                        },
+                                    ));
+                                }
+                                return Some(DefineRouteProperty::Method(Method {
+                                    key,
+                                    span: arrow_func.span,
+                                    // remove the parentheses
+                                    args: Span::new(
+                                        arrow_func.params.span.start + 1,
+                                        arrow_func.params.span.end - 1,
+                                    )
+                                    .source_text(&source_text)
+                                    .to_owned(),
+                                    body: &arrow_func.body.span.source_text(&source_text),
+                                    is_async: arrow_func.r#async,
+                                }));
+                            }
+                            _ => None,
+                        };
                     }
                 }
             }
+            return None;
         }
-        AstKind::ExportDefaultDeclaration(default_export) => {
-            match &default_export.declaration {
-                ExportDefaultDeclarationKind::FunctionDeclaration(decl) => {
-                    meta.span = Some(decl.span);
-                    meta.args = Some(
-                        // remove the parentheses
-                        Span::new(decl.params.span.start + 1, decl.params.span.end - 1)
-                            .source_text(&source_text)
-                            .to_owned(),
-                    );
-                    if let Some(body) = &decl.body {
-                        meta.body = Some(body.span.source_text(&source_text))
-                    }
-                    meta.is_async = decl.r#async;
-                }
-                ExportDefaultDeclarationKind::ArrowFunctionExpression(arrow_func) => {
-                    // Don't use shorthand for arrow functions with implicit returns, like `() => stuff`
-                    if arrow_func.expression {
-                        meta.span = Some(arrow_func.span);
-                        return meta;
-                    }
-                    meta.span = Some(arrow_func.span);
-                    meta.args = Some(
-                        // remove the parentheses
-                        Span::new(
-                            arrow_func.params.span.start + 1,
-                            arrow_func.params.span.end - 1,
-                        )
+        _ => None,
+    }
+}
+
+fn get_default_export_property<'a>(
+    node: &ExportDefaultDeclaration<'a>,
+    source_text: &'a str,
+) -> Option<DefineRouteProperty<'a>> {
+    match &node.declaration {
+        ExportDefaultDeclarationKind::FunctionDeclaration(decl) => {
+            if let Some(body) = &decl.body {
+                return Some(DefineRouteProperty::Method(Method {
+                    key: "$",
+                    span: decl.span,
+                    // remove the parentheses
+                    args: Span::new(decl.params.span.start + 1, decl.params.span.end - 1)
                         .source_text(&source_text)
                         .to_owned(),
-                    );
-                    meta.body = Some(&arrow_func.body.span.source_text(&source_text));
-                    meta.is_async = arrow_func.r#async;
-                }
-                _ => {}
+                    body: body.span.source_text(&source_text),
+                    is_async: decl.r#async,
+                }));
             }
+            return None;
         }
-        _ => {}
+        ExportDefaultDeclarationKind::ArrowFunctionExpression(arrow_func) => {
+            // Don't use shorthand for arrow functions with implicit returns, like `() => stuff`
+            if arrow_func.expression {
+                return Some(DefineRouteProperty::StaticProperty(StaticProperty {
+                    key: "$",
+                    value: arrow_func.span.source_text(source_text),
+                }));
+            }
+            return Some(DefineRouteProperty::Method(Method {
+                key: "$",
+                span: arrow_func.span,
+                // remove the parentheses
+                args: Span::new(
+                    arrow_func.params.span.start + 1,
+                    arrow_func.params.span.end - 1,
+                )
+                .source_text(&source_text)
+                .to_owned(),
+                body: &arrow_func.body.span.source_text(&source_text),
+                is_async: arrow_func.r#async,
+            }));
+        }
+        _ => None,
     }
-
-    meta
 }
 
 fn rename_exports<'a>(old_name: Option<&'a str>) -> Option<&str> {
@@ -407,7 +392,7 @@ fn find_hook_usage(var_decl: &VariableDeclaration, hook_name: &str) -> Option<(S
     None
 }
 
-fn construct_component_params(hook_declarators: &Vec<HookDeclarator>) -> Option<String> {
+fn construct_component_params(hook_declarators: &Vec<HookDeclarator>) -> String {
     let mut params = vec![];
 
     for declarator in hook_declarators.iter() {
@@ -420,10 +405,10 @@ fn construct_component_params(hook_declarators: &Vec<HookDeclarator>) -> Option<
     }
 
     if params.len() == 0 {
-        return None;
+        return String::from("");
     }
 
-    Some(format!("{{ {} }}", params.join(", ")))
+    format!("{{ {} }}", params.join(", "))
 }
 
 #[cfg(test)]

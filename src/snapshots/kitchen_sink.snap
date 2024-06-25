@@ -30,7 +30,6 @@ const title = "User page";
 
 
 export default defineRoute({
-  meta: () => [{ title }],
   serverAction({ params, response }: ActionFunctionArgs) {
     response.status = 307;
     response.headers.set("Location", "/login");
@@ -59,14 +58,15 @@ export default defineRoute({
     const error = useRouteError();
     return <h1>Something went wrong</h1>;
   },
-  links: () => ([
-    { rel: "icon", href: "/favicon.png", type: "image/png" },
-    { rel: "stylesheet", href: "https://example.com/some/styles.css" },
-  ]),
   shouldRevalidate({
     actionResult, currentParams, currentUrl, defaultShouldRevalidate,
     formAction, formData, formEncType, formMethod, nextParams, nextUrl
   }) {
     return true;
   },
+  links: () => ([
+    { rel: "icon", href: "/favicon.png", type: "image/png" },
+    { rel: "stylesheet", href: "https://example.com/some/styles.css" },
+  ]),
+  meta: () => [{ title }],
 });
