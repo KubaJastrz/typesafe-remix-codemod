@@ -22,6 +22,8 @@ use codemod_models::HookDeclarator;
 pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, ()> {
     //==========================================================================
     // First pass
+    // : Collect necessary information without any span references
+    // : If we have something to remove, now is the time to do it
     //==========================================================================
 
     let allocator = Allocator::default();
@@ -90,6 +92,7 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
 
     //==========================================================================
     // Second pass
+    // : Construct new module object and insert it in the cleaned up source
     //==========================================================================
 
     let allocator = Allocator::default();
