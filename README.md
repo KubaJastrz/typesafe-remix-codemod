@@ -35,9 +35,11 @@ It makes transformations in two passes per file. The first one is to modify the 
 ```bash
 # run against local remix app
 cargo run ./remix-app
+cargo run ./epic-stack
 
 # revert codemod changes
 git restore ./remix-app
+git restore ./epic-stack
 
 # test
 cargo test
