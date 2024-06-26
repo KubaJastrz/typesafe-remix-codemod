@@ -30,20 +30,20 @@ const title = "User page";
 
 
 export default defineRoute({
-  serverAction({ params, response }: ActionFunctionArgs) {
+  serverAction({ params, response }) {
     response.status = 307;
     response.headers.set("Location", "/login");
     return response;
   },
-  async clientAction({ request, params, serverAction }: ClientActionFunctionArgs) {
+  async clientAction({ request, params, serverAction }) {
     console.log('I am a client action');
     return await serverAction();
   },
-  async serverLoader({ params }: LoaderFunctionArgs) {
+  async serverLoader({ params }) {
     const { userId } = params;
     return { userId };
   },
-  async clientLoader({ request, params, serverLoader }: ClientLoaderFunctionArgs) {
+  async clientLoader({ request, params, serverLoader }) {
     const serverData = await serverLoader();
     const data = getDataFromClient();
     return data;

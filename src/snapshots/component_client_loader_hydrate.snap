@@ -11,11 +11,11 @@ import { useLoaderData } from "@remix-run/react";
 
 
 export default defineRoute({
-  async serverLoader({ request }: LoaderFunctionArgs) {
+  async serverLoader({ request }) {
     const partialData = await getPartialDataFromDb({ request });
     return json(partialData);
   },
-  async clientLoader({ request, serverLoader }: ClientLoaderFunctionArgs) {
+  async clientLoader({ request, serverLoader }) {
     const [serverData, clientData] = await Promise.all([
       serverLoader(),
       getClientData(request),

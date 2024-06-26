@@ -46,8 +46,29 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
     let mut route_module_properties = vec![];
     let mut hook_declarators = vec![];
 
+    // TODO: add headers
+    let known_remix_functions_with_args = vec![
+        "action",
+        "clientAction",
+        "clientLoader",
+        "loader",
+        "meta",
+        "shouldRevalidate",
+    ];
+
     for node in semantic_ret.semantic.nodes().iter() {
         match node.kind() {
+            AstKind::ExportNamedDeclaration(named_export) => {
+                if let Some(name) = get_named_export_name(&node) {
+                    if known_remix_functions_with_args.contains(&name) {
+                        let type_annotations =
+                            get_named_export_function_args_type_annotations(&named_export);
+                        for span in type_annotations.iter() {
+                            code_fixes.push(Fix::delete(*span));
+                        }
+                    }
+                }
+            }
             AstKind::VariableDeclaration(var_decl) => {
                 if let Some((whole_declaration, declarator_id)) =
                     find_hook_usage(var_decl, "useLoaderData")
@@ -245,6 +266,36 @@ fn get_named_export_name<'a>(node: &'a AstNode<'a>) -> Option<&'a str> {
         }
         _ => None,
     }
+}
+
+fn get_named_export_function_args_type_annotations<'a>(
+    named_export: &'a ExportNamedDeclaration<'a>,
+) -> Vec<Span> {
+    let mut type_annotations = vec![];
+
+    match &named_export.declaration {
+        Some(Declaration::FunctionDeclaration(decl)) => {
+            decl.params.items.iter().for_each(|param| {
+                if let Some(type_annotation) = &param.pattern.type_annotation {
+                    type_annotations.push(type_annotation.span);
+                }
+            });
+        }
+        Some(Declaration::VariableDeclaration(decl)) => {
+            decl.declarations.iter().for_each(|d| {
+                if let Some(Expression::ArrowFunctionExpression(arrow_func)) = &d.init {
+                    arrow_func.params.items.iter().for_each(|param| {
+                        if let Some(type_annotation) = &param.pattern.type_annotation {
+                            type_annotations.push(type_annotation.span);
+                        }
+                    });
+                }
+            });
+        }
+        _ => {}
+    }
+
+    type_annotations
 }
 
 fn get_named_export_property<'a>(
@@ -775,6 +826,34 @@ mod tests {
             }
         "#;
         assert_snapshot("component_client_loader_hydrate", input);
+    }
+
+    #[test]
+    fn test_unrelated_function_args() {
+        let input = r#"
+            import type { LoaderFunctionArgs } from "@remix-run/node";
+
+            export function unrelated({ params, context, request, response }: LoaderFunctionArgs) {
+              return { hello: "world" };
+            }
+        "#;
+        assert_snapshot("unrelated_function_args", input);
+    }
+
+    #[test]
+    fn test_mix_loader_unrelated_function_args() {
+        let input = r#"
+            import type { LoaderFunctionArgs } from "@remix-run/node";
+
+            export function loader({ params, context, request, response }: LoaderFunctionArgs) {
+              return { hello: "world" };
+            }
+
+            export function unrelated({ params, context, request, response }: LoaderFunctionArgs) {
+              return { hello: "world" };
+            }
+        "#;
+        assert_snapshot("mix_loader_unrelated_function_args", input);
     }
 
     fn assert_snapshot(name: &str, input: &str) {

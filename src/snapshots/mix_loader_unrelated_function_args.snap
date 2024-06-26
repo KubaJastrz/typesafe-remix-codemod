@@ -1,0 +1,17 @@
+---
+source: src/codemod.rs
+description: "import type { LoaderFunctionArgs } from \"@remix-run/node\";\n\nexport function loader({ params, context, request, response }: LoaderFunctionArgs) {\n  return { hello: \"world\" };\n}\n\nexport function unrelated({ params, context, request, response }: LoaderFunctionArgs) {\n  return { hello: \"world\" };\n}\n"
+expression: "codemod(&input, source_type).unwrap()"
+---
+import type { LoaderFunctionArgs } from "@remix-run/node";
+
+
+export function unrelated({ params, context, request, response }: LoaderFunctionArgs) {
+  return { hello: "world" };
+}
+
+export default defineRoute({
+  serverLoader({ params, context, request, response }) {
+    return { hello: "world" };
+  },
+});
