@@ -19,7 +19,7 @@ use crate::{
 
 use codemod_models::HookDeclarator;
 
-pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, ()> {
+pub fn codemod(original_source_text: &String, source_type: SourceType) -> Result<String, ()> {
     //==========================================================================
     // First pass
     // : Clean up known remix exports - we don't want to include useLoaderData
@@ -28,17 +28,17 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
     //==========================================================================
 
     let allocator = Allocator::default();
-    let ret = Parser::new(&allocator, &source_text, source_type).parse();
+    let ret = Parser::new(&allocator, &original_source_text, source_type).parse();
 
     if !ret.errors.is_empty() {
         for error in ret.errors {
-            let error = error.with_source_code(source_text.clone());
+            let error = error.with_source_code(original_source_text.clone());
             println!("{error:?}");
         }
         process::exit(1);
     }
 
-    let semantic_ret = SemanticBuilder::new(&source_text, source_type)
+    let semantic_ret = SemanticBuilder::new(&original_source_text, source_type)
         .with_trivias(ret.trivias)
         .build(&ret.program);
 
@@ -76,7 +76,7 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
                     code_fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
                     hook_declarators.push(HookDeclarator {
                         name: "loaderData",
-                        source_text: declarator_id.source_text(source_text),
+                        source_text: declarator_id.source_text(original_source_text),
                     });
                 }
                 if let Some((whole_declaration, declarator_id)) =
@@ -85,7 +85,7 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
                     code_fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
                     hook_declarators.push(HookDeclarator {
                         name: "actionData",
-                        source_text: declarator_id.source_text(source_text),
+                        source_text: declarator_id.source_text(original_source_text),
                     });
                 }
             }
@@ -93,7 +93,7 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
         }
     }
 
-    let source_text = Fixer::new(&source_text, code_fixes).fix().fixed_code;
+    let source_text = Fixer::new(&original_source_text, code_fixes).fix().fixed_code;
 
     //==========================================================================
     // Second pass
@@ -174,7 +174,7 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
     }
 
     if route_module_properties.len() == 0 {
-        return Ok("".to_owned());
+        return Ok(original_source_text.to_string());
     }
 
     let new_export_position = source_text.len() as u32;
