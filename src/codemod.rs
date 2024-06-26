@@ -22,8 +22,9 @@ use codemod_models::HookDeclarator;
 pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, ()> {
     //==========================================================================
     // First pass
-    // : Collect necessary information without any span references
-    // : If we have something to remove, now is the time to do it
+    // : Clean up known remix exports - we don't want to include useLoaderData
+    //       and useActionData hooks or excessive type annotations in the new
+    //       defineRoute default export
     //==========================================================================
 
     let allocator = Allocator::default();
@@ -41,8 +42,8 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
         .with_trivias(ret.trivias)
         .build(&ret.program);
 
-    let mut fixes = vec![];
-    let mut remix_exports = vec![];
+    let mut code_fixes = vec![];
+    let mut route_module_properties = vec![];
     let mut hook_declarators = vec![];
 
     for node in semantic_ret.semantic.nodes().iter() {
@@ -51,7 +52,7 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
                 if let Some((whole_declaration, declarator_id)) =
                     find_hook_usage(var_decl, "useLoaderData")
                 {
-                    fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
+                    code_fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
                     hook_declarators.push(HookDeclarator {
                         name: "loaderData",
                         source_text: declarator_id.source_text(source_text),
@@ -60,39 +61,23 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
                 if let Some((whole_declaration, declarator_id)) =
                     find_hook_usage(var_decl, "useActionData")
                 {
-                    fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
+                    code_fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
                     hook_declarators.push(HookDeclarator {
                         name: "actionData",
                         source_text: declarator_id.source_text(source_text),
                     });
                 }
             }
-            AstKind::ExpressionStatement(expr_stmt) => {
-                if let Expression::AssignmentExpression(assignment_expr) = &expr_stmt.expression {
-                    if matches!(
-                        &assignment_expr.left,
-                        AssignmentTarget::StaticMemberExpression(member_expr)
-                            if matches!(&member_expr.object, Expression::Identifier(ident) if ident.name == "clientLoader")
-                            && member_expr.property.name == "hydrate"
-                    ) {
-                        let value = assignment_expr.right.span().source_text(source_text);
-                        remix_exports.push(DefineRouteProperty::StaticProperty(StaticProperty {
-                            key: "clientLoaderHydrate",
-                            value,
-                        }));
-                        fixes.push(Fix::delete_with_leading_whitespace(expr_stmt.span));
-                    }
-                }
-            }
             _ => {}
         }
     }
 
-    let source_text = Fixer::new(&source_text, fixes).fix().fixed_code;
+    let source_text = Fixer::new(&source_text, code_fixes).fix().fixed_code;
 
     //==========================================================================
     // Second pass
-    // : Construct new module object and insert it in the cleaned up source
+    // : Remove known remix exports now that they are cleaned up
+    // : Construct a new defineRoute default export at the end of the file
     //==========================================================================
 
     let allocator = Allocator::default();
@@ -111,52 +96,77 @@ pub fn codemod(source_text: &String, source_type: SourceType) -> Result<String, 
         "action",
         "clientAction",
         "meta",
-        "default",
         "ErrorBoundary",
         "shouldRevalidate",
     ];
 
-    let mut fixes = vec![];
+    let mut code_fixes = vec![];
 
     for node in semantic_ret.semantic.nodes().iter() {
-        if let AstKind::ExportNamedDeclaration(named_export) = node.kind() {
-            if let Some(name) = get_named_export_name(&node) {
-                if known_remix_exports.contains(&name) {
-                    let property = get_named_export_property(&named_export, &source_text);
-                    if let Some(p) = property {
-                        remix_exports.push(p.default_name(name));
+        match node.kind() {
+            AstKind::ExportNamedDeclaration(named_export) => {
+                if let Some(name) = get_named_export_name(&node) {
+                    if known_remix_exports.contains(&name) {
+                        let property = get_named_export_property(&named_export, &source_text);
+                        if let Some(p) = property {
+                            route_module_properties.push(p.default_name(name));
+                        }
+                        code_fixes.push(Fix::delete_with_leading_whitespace(named_export.span));
                     }
-                    fixes.push(Fix::delete_with_leading_whitespace(named_export.span));
                 }
             }
-        } else if let AstKind::ExportDefaultDeclaration(default_export) = node.kind() {
-            if is_new_module_default_export(&node) {
-                println!("File already has a new module default export");
-                return Err(());
+            AstKind::ExportDefaultDeclaration(default_export) => {
+                if is_new_module_default_export(&node) {
+                    println!("File already has a new module default export");
+                    return Err(());
+                }
+                let property = get_default_export_property(&default_export, &source_text);
+                if let Some(p) = property {
+                    route_module_properties.push(
+                        p.default_name("Component")
+                            .set_args(construct_component_params(&hook_declarators)),
+                    );
+                }
+                code_fixes.push(Fix::delete_with_leading_whitespace(default_export.span));
             }
-            let property = get_default_export_property(&default_export, &source_text);
-            if let Some(p) = property {
-                remix_exports.push(
-                    p.default_name("Component")
-                        .set_args(construct_component_params(&hook_declarators)),
-                );
+            AstKind::ExpressionStatement(expr_stmt) => {
+                if let Expression::AssignmentExpression(assignment_expr) = &expr_stmt.expression {
+                    if matches!(
+                        &assignment_expr.left,
+                        AssignmentTarget::StaticMemberExpression(member_expr)
+                            if matches!(&member_expr.object, Expression::Identifier(ident) if ident.name == "clientLoader")
+                            && member_expr.property.name == "hydrate"
+                    ) {
+                        let value = assignment_expr.right.span().source_text(&source_text);
+                        route_module_properties.push(DefineRouteProperty::StaticProperty(
+                            StaticProperty {
+                                key: "clientLoaderHydrate",
+                                value,
+                            },
+                        ));
+                        code_fixes.push(Fix::delete_with_leading_whitespace(expr_stmt.span));
+                    }
+                }
             }
-            fixes.push(Fix::delete_with_leading_whitespace(default_export.span));
+            _ => {}
         }
     }
 
-    if remix_exports.len() == 0 {
+    if route_module_properties.len() == 0 {
         return Ok("".to_owned());
     }
 
     let new_export_position = source_text.len() as u32;
 
-    fixes.push(Fix::insert(
-        construct_new_module_object(&mut remix_exports),
+    code_fixes.push(Fix::insert(
+        construct_new_module_object(&mut route_module_properties),
         Span::new(new_export_position, new_export_position),
     ));
 
-    let fixed_code = Fixer::new(&source_text, fixes).fix().fixed_code.to_string();
+    let fixed_code = Fixer::new(&source_text, code_fixes)
+        .fix()
+        .fixed_code
+        .to_string();
 
     Ok(fixed_code)
 }

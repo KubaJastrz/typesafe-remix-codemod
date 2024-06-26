@@ -88,6 +88,10 @@ impl<'a> Fixer<'a> {
                 start
             };
 
+            if start != fix.span.start {
+                fix.span.start = start;
+            }
+
             // Copy the text before the current fix
             output.push_str(&source_text[offset..start as usize]);
             // Apply the current fix
