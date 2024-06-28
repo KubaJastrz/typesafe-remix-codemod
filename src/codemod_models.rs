@@ -1,5 +1,6 @@
 use oxc_span::Span;
 
+#[derive(Debug, Clone)]
 pub struct HookDeclarator<'a> {
     pub name: &'a str,
     pub source_text: &'a str,

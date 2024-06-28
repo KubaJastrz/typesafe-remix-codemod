@@ -2,7 +2,8 @@ use oxc_allocator::Allocator;
 use oxc_ast::{
     ast::{
         AssignmentTarget, BindingPatternKind, Declaration, ExportDefaultDeclaration,
-        ExportDefaultDeclarationKind, ExportNamedDeclaration, Expression, VariableDeclaration,
+        ExportDefaultDeclarationKind, ExportNamedDeclaration, Expression, FunctionBody, Statement,
+        VariableDeclaration,
     },
     AstKind,
 };
@@ -44,7 +45,7 @@ pub fn codemod(original_source_text: &String, source_type: SourceType) -> Result
 
     let mut code_fixes = vec![];
     let mut route_module_properties = vec![];
-    let mut hook_declarators = vec![];
+    let mut hook_declarators: Vec<HookDeclarator> = vec![];
 
     // TODO: add headers
     let known_remix_functions_with_args = vec![
@@ -64,36 +65,42 @@ pub fn codemod(original_source_text: &String, source_type: SourceType) -> Result
                         let type_annotations =
                             get_named_export_function_args_type_annotations(&named_export);
                         for span in type_annotations.iter() {
-                            code_fixes.push(Fix::delete(*span));
+                            code_fixes.push(Fix::delete(span.clone()));
                         }
                     }
                 }
             }
-            AstKind::VariableDeclaration(var_decl) => {
-                if let Some((whole_declaration, declarator_id)) =
-                    find_hook_usage(var_decl, "useLoaderData")
-                {
-                    code_fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
-                    hook_declarators.push(HookDeclarator {
-                        name: "loaderData",
-                        source_text: declarator_id.source_text(original_source_text),
-                    });
-                }
-                if let Some((whole_declaration, declarator_id)) =
-                    find_hook_usage(var_decl, "useActionData")
-                {
-                    code_fixes.push(Fix::delete_with_leading_whitespace(whole_declaration));
-                    hook_declarators.push(HookDeclarator {
-                        name: "actionData",
-                        source_text: declarator_id.source_text(original_source_text),
-                    });
+            AstKind::ExportDefaultDeclaration(default_export) => {
+                match &default_export.declaration {
+                    ExportDefaultDeclarationKind::FunctionDeclaration(decl) => {
+                        if let Some(body) = &decl.body {
+                            get_hook_declarators(&body, &original_source_text)
+                                .iter()
+                                .for_each(|(hook, span)| {
+                                    code_fixes
+                                        .push(Fix::delete_with_leading_whitespace(span.clone()));
+                                    hook_declarators.push(hook.clone());
+                                });
+                        }
+                    }
+                    ExportDefaultDeclarationKind::ArrowFunctionExpression(decl) => {
+                        get_hook_declarators(&decl.body, &original_source_text)
+                            .iter()
+                            .for_each(|(hook, span)| {
+                                code_fixes.push(Fix::delete_with_leading_whitespace(span.clone()));
+                                hook_declarators.push(hook.clone());
+                            });
+                    }
+                    _ => {}
                 }
             }
             _ => {}
         }
     }
 
-    let source_text = Fixer::new(&original_source_text, code_fixes).fix().fixed_code;
+    let source_text = Fixer::new(&original_source_text, code_fixes)
+        .fix()
+        .fixed_code;
 
     //==========================================================================
     // Second pass
@@ -173,6 +180,9 @@ pub fn codemod(original_source_text: &String, source_type: SourceType) -> Result
         }
     }
 
+    // If there are no known remix exports, return the original source text.
+    // It's fine that this check is after the second pass, as most route files
+    // will have at least one known remix export.
     if route_module_properties.len() == 0 {
         return Ok(original_source_text.to_string());
     }
@@ -427,6 +437,44 @@ fn get_default_export_property<'a>(
         }
         _ => None,
     }
+}
+
+fn get_hook_declarators<'a>(
+    function_body: &'a FunctionBody,
+    source_text: &'a str,
+) -> Vec<(HookDeclarator<'a>, Span)> {
+    function_body
+        .statements
+        .iter()
+        .filter_map(|f| match f {
+            Statement::VariableDeclaration(var_decl) => {
+                if let Some((whole_declaration, declarator_id)) =
+                    find_hook_usage(var_decl, "useLoaderData")
+                {
+                    return Some((
+                        HookDeclarator {
+                            name: "loaderData",
+                            source_text: declarator_id.source_text(source_text),
+                        },
+                        whole_declaration,
+                    ));
+                } else if let Some((whole_declaration, declarator_id)) =
+                    find_hook_usage(var_decl, "useActionData")
+                {
+                    return Some((
+                        HookDeclarator {
+                            name: "actionData",
+                            source_text: declarator_id.source_text(source_text),
+                        },
+                        whole_declaration,
+                    ));
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>()
 }
 
 fn rename_exports<'a>(old_name: Option<&'a str>) -> Option<&str> {
@@ -826,6 +874,28 @@ mod tests {
             }
         "#;
         assert_snapshot("component_client_loader_hydrate", input);
+    }
+
+    #[test]
+    fn test_multiple_components() {
+        let input = r#"
+            import { useLoaderData } from '@remix-run/react';
+
+            export const loader = () => 42;
+
+            export default function Route() {
+              const data = useLoaderData<typeof loader>();
+            }
+
+            function Internal() {
+              const data = useLoaderData<typeof loader>();
+            }
+
+            export function Exported() {
+              const data = useLoaderData<typeof loader>();
+            }
+        "#;
+        assert_snapshot("multiple_components", input);
     }
 
     #[test]

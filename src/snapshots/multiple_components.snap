@@ -1,0 +1,22 @@
+---
+source: src/codemod.rs
+description: "import { useLoaderData } from '@remix-run/react';\n\nexport const loader = () => 42;\n\nexport default function Route() {\n  const data = useLoaderData<typeof loader>();\n}\n\nfunction Internal() {\n  const data = useLoaderData<typeof loader>();\n}\n\nexport function Exported() {\n  const data = useLoaderData<typeof loader>();\n}\n"
+expression: "codemod(&input, source_type).unwrap()"
+---
+import { useLoaderData } from '@remix-run/react';
+
+
+
+function Internal() {
+  const data = useLoaderData<typeof loader>();
+}
+
+export function Exported() {
+  const data = useLoaderData<typeof loader>();
+}
+
+export default defineRoute({
+  Component({ loaderData: data }) {
+  },
+  serverLoader: () => 42,
+});
