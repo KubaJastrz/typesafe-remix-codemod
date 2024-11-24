@@ -1,3 +1,10 @@
+>[!NOTE]
+>Project has been deprecated, as the underlying design for typesafe routes has changed in the mean time.
+
+<br>
+<br>
+<br>
+
 # Codemod for Type-safe Remix/React Router
 
 > More info: https://github.com/orgs/remix-run/projects/5?pane=issue&itemId=62153560
